@@ -36,6 +36,21 @@ export interface TrackSample {
   tangent: THREE.Vector3;
   horizForward: THREE.Vector3;
   right: THREE.Vector3;
+  leftBarrierValid: boolean;
+  rightBarrierValid: boolean;
+}
+
+export interface TrackClosestQueryResult {
+  segIndex: number;
+  t: number;
+  distSq: number;
+  distanceMeters: number;
+  lateralOffset: number;
+  roadY: number;
+  projX: number;
+  projZ: number;
+  tangent: THREE.Vector3;
+  right: THREE.Vector3;
 }
 
 export interface SalatigaTrackBuildResult {
@@ -43,6 +58,11 @@ export interface SalatigaTrackBuildResult {
   trackCurve: THREE.CatmullRomCurve3;
   trackLengthMeters: number;
   samples: TrackSample[];
+  queryClosestTrack: (
+    px: number,
+    pz: number,
+    out?: TrackClosestQueryResult,
+  ) => TrackClosestQueryResult;
   dispose: () => void;
 }
 
@@ -299,6 +319,8 @@ function createTerrainGrassTexture(): THREE.CanvasTexture {
  * Builds an anti-twist horizontal ribbon BufferGeometry along track samples.
  * Every slice uses fixed world-up crossed with horizontal tangent so the ribbon
  * never banks or twists sideways on climbs/descents.
+ * Optional validMask omits segments cleanly without bridging across gaps, and
+ * optional yBiasArray applies deterministic vertical separation at overlapping junctions.
  */
 function buildHorizontalRibbonGeometry(
   samples: TrackSample[],
@@ -307,27 +329,30 @@ function buildHorizontalRibbonGeometry(
   yOffsetLeft: number,
   yOffsetRight: number,
   uvTileLengthMeters: number,
+  validMask?: boolean[],
+  yBiasArray?: Float32Array,
 ): THREE.BufferGeometry {
   const count = samples.length;
   const positions = new Float32Array(count * 2 * 3);
   const normals = new Float32Array(count * 2 * 3);
   const uvs = new Float32Array(count * 2 * 2);
-  const indices = new Uint32Array((count - 1) * 6);
+  const indicesArr: number[] = [];
 
   const surfaceNormal = new THREE.Vector3();
 
   for (let i = 0; i < count; i++) {
     const s = samples[i];
     const v = s.distanceMeters / uvTileLengthMeters;
+    const yBias = yBiasArray ? yBiasArray[i] : 0;
 
     // Left edge vertex (offsetLeft along right vector)
     const lx = s.position.x + s.right.x * offsetLeft;
-    const ly = s.position.y + yOffsetLeft;
+    const ly = s.position.y + yOffsetLeft + yBias;
     const lz = s.position.z + s.right.z * offsetLeft;
 
     // Right edge vertex (offsetRight along right vector)
     const rx = s.position.x + s.right.x * offsetRight;
-    const ry = s.position.y + yOffsetRight;
+    const ry = s.position.y + yOffsetRight + yBias;
     const rz = s.position.z + s.right.z * offsetRight;
 
     const vi = i * 2;
@@ -357,17 +382,13 @@ function buildHorizontalRibbonGeometry(
     uvs[(vi + 1) * 2 + 1] = v;
 
     if (i < count - 1) {
-      const idx = i * 6;
-      const a = vi;
-      const b = vi + 1;
-      const c = vi + 2;
-      const d = vi + 3;
-      indices[idx] = a;
-      indices[idx + 1] = b;
-      indices[idx + 2] = c;
-      indices[idx + 3] = b;
-      indices[idx + 4] = d;
-      indices[idx + 5] = c;
+      if (!validMask || (validMask[i] && validMask[i + 1])) {
+        const a = vi;
+        const b = vi + 1;
+        const c = vi + 2;
+        const d = vi + 3;
+        indicesArr.push(a, b, c, b, d, c);
+      }
     }
   }
 
@@ -375,17 +396,20 @@ function buildHorizontalRibbonGeometry(
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
   geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indicesArr), 1));
   geometry.computeBoundingSphere();
   return geometry;
 }
 
 /**
  * Builds a vertical Armco W-beam guardrail ribbon along one side of the track.
+ * Respects validMask so segments entering other road lanes are cleanly omitted
+ * without stretched triangles across gaps.
  */
 function buildArmcoBarrierGeometry(
   samples: TrackSample[],
   lateralOffset: number,
+  validMask?: boolean[],
 ): THREE.BufferGeometry {
   // Profile points: (heightOffset, extraOutwardOffset)
   // Double-faced closed-top beam profile so visible from both track and Free Orbit camera
@@ -403,7 +427,7 @@ function buildArmcoBarrierGeometry(
   const ringPts = profile.length;
   const count = samples.length;
   const positions = new Float32Array(count * ringPts * 3);
-  const indices = new Uint32Array((count - 1) * (ringPts - 1) * 6);
+  const indicesArr: number[] = [];
 
   for (let i = 0; i < count; i++) {
     const s = samples[i];
@@ -417,26 +441,17 @@ function buildArmcoBarrierGeometry(
     }
 
     if (i < count - 1) {
-      for (let p = 0; p < ringPts - 1; p++) {
-        const a = i * ringPts + p;
-        const b = i * ringPts + p + 1;
-        const c = (i + 1) * ringPts + p;
-        const d = (i + 1) * ringPts + p + 1;
-        const base = (i * (ringPts - 1) + p) * 6;
-        if (sign > 0) {
-          indices[base] = a;
-          indices[base + 1] = b;
-          indices[base + 2] = c;
-          indices[base + 3] = b;
-          indices[base + 4] = d;
-          indices[base + 5] = c;
-        } else {
-          indices[base] = a;
-          indices[base + 1] = c;
-          indices[base + 2] = b;
-          indices[base + 3] = b;
-          indices[base + 4] = c;
-          indices[base + 5] = d;
+      if (!validMask || (validMask[i] && validMask[i + 1])) {
+        for (let p = 0; p < ringPts - 1; p++) {
+          const a = i * ringPts + p;
+          const b = i * ringPts + p + 1;
+          const c = (i + 1) * ringPts + p;
+          const d = (i + 1) * ringPts + p + 1;
+          if (sign > 0) {
+            indicesArr.push(a, b, c, b, d, c);
+          } else {
+            indicesArr.push(a, c, b, b, c, d);
+          }
         }
       }
     }
@@ -444,7 +459,7 @@ function buildArmcoBarrierGeometry(
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indicesArr), 1));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
@@ -475,28 +490,35 @@ function buildStartFinishGantry(sample0: TrackSample): THREE.Group {
     roughness: 0.85,
   });
 
-  // 1-2. Left and Right concrete footings & vertical steel stanchions at ±9.2m
-  const stanchionGeo = new THREE.BoxGeometry(0.48, 6.4, 0.56);
-  const footingGeo = new THREE.BoxGeometry(0.9, 1.0, 1.1);
-  for (const side of [-1, 1]) {
-    const xPos = side * 9.2;
-    const footing = new THREE.Mesh(footingGeo, footingMat);
-    footing.position.set(xPos, 0.1, 0);
-    footing.castShadow = true;
-    footing.receiveShadow = true;
-    gantry.add(footing);
+  // 1-2. Cantilevered East-side footing & reinforced twin-column steel tower (+9.2m = outer clear side)
+  // Leaving West side (-9.2m) 100% open so the Bundaran Tamansari roundabout asphalt has zero obstruction.
+  const stanchionGeo = new THREE.BoxGeometry(0.56, 6.4, 0.72);
+  const footingGeo = new THREE.BoxGeometry(1.4, 1.0, 1.6);
+  const xOuter = 9.2;
+  const footing = new THREE.Mesh(footingGeo, footingMat);
+  footing.position.set(xOuter, 0.1, 0);
+  footing.castShadow = true;
+  footing.receiveShadow = true;
+  gantry.add(footing);
 
-    const tower = new THREE.Mesh(stanchionGeo, steelMat);
-    tower.position.set(xPos, 3.2, 0);
-    tower.castShadow = true;
-    tower.receiveShadow = true;
-    gantry.add(tower);
-  }
+  const tower = new THREE.Mesh(stanchionGeo, steelMat);
+  tower.position.set(xOuter, 3.2, 0);
+  tower.castShadow = true;
+  tower.receiveShadow = true;
+  gantry.add(tower);
 
-  // 3. Overhead truss bridge spanning 18.88m
-  const bridgeGeo = new THREE.BoxGeometry(18.88, 0.55, 0.7);
+  // Diagonal knee brace supporting cantilevered bridge from East tower
+  const braceGeo = new THREE.BoxGeometry(0.28, 4.6, 0.34);
+  const brace = new THREE.Mesh(braceGeo, steelMat);
+  brace.position.set(xOuter - 1.55, 4.45, 0);
+  brace.rotation.z = -0.68;
+  brace.castShadow = true;
+  gantry.add(brace);
+
+  // 3. Overhead cantilevered truss bridge spanning across start straight (-7.6m to +9.48m)
+  const bridgeGeo = new THREE.BoxGeometry(17.1, 0.55, 0.7);
   const bridge = new THREE.Mesh(bridgeGeo, steelMat);
-  bridge.position.set(0, 6.1, 0);
+  bridge.position.set(0.95, 6.1, 0);
   bridge.castShadow = true;
   bridge.receiveShadow = true;
   gantry.add(bridge);
@@ -537,20 +559,20 @@ function buildStartFinishGantry(sample0: TrackSample): THREE.Group {
     gantry.add(lens);
   }
 
-  // 6. Checkered Start/Finish asphalt stripe flush on road
+  // 6. Checkered Start/Finish asphalt stripe flush on road (offset above +0.014m start asphalt bias)
   const checkTex = createCheckeredTexture();
   const checkMat = new THREE.MeshStandardMaterial({
     map: checkTex,
     roughness: 0.75,
     metalness: 0.04,
     polygonOffset: true,
-    polygonOffsetFactor: -1,
-    polygonOffsetUnits: -1,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
   const lineGeo = new THREE.PlaneGeometry(13.2, 1.8);
   lineGeo.rotateX(-Math.PI / 2);
   const startLine = new THREE.Mesh(lineGeo, checkMat);
-  startLine.position.set(0, 0.025, 0);
+  startLine.position.set(0, 0.04, 0);
   startLine.receiveShadow = true;
   gantry.add(startLine);
 
@@ -885,12 +907,54 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     throw new Error('Invalid Salatiga GeoJSON: missing features[0].geometry.coordinates');
   }
 
-  // Project exact [lon, lat, elev] GPS coordinates without altering, simplifying, or inventing points
-  const worldPoints: THREE.Vector3[] = rawCoords.map(([lon, lat, elev]) =>
+  // Project exact [lon, lat, elev] GPS coordinates, then smooth sharp polygonal GPS kinks
+  // while pinning exact Start and End coordinates.
+  const rawWorldPoints: THREE.Vector3[] = rawCoords.map(([lon, lat, elev]) =>
     gpsToWorld(lon, lat, elev ?? SALATIGA_TRACK_CONFIG.originElev),
   );
 
-  const trackCurve = new THREE.CatmullRomCurve3(worldPoints, false, 'centripetal');
+  const cleanPoints: THREE.Vector3[] = [rawWorldPoints[0].clone()];
+  for (let i = 1; i < rawWorldPoints.length - 1; i++) {
+    if (rawWorldPoints[i].distanceTo(cleanPoints[cleanPoints.length - 1]) >= 4.0) {
+      cleanPoints.push(rawWorldPoints[i].clone());
+    }
+  }
+  cleanPoints.push(rawWorldPoints[rawWorldPoints.length - 1].clone());
+
+  // 2-iteration distance-clamped Chaikin corner cutting + 2-iteration moving-window spatial smoothing
+  let smoothedPoints = cleanPoints;
+  for (let iter = 0; iter < 2; iter++) {
+    if (smoothedPoints.length < 3) break;
+    const next: THREE.Vector3[] = [smoothedPoints[0].clone()];
+    for (let i = 0; i < smoothedPoints.length - 1; i++) {
+      const a = smoothedPoints[i];
+      const b = smoothedPoints[i + 1];
+      const segLen = Math.hypot(b.x - a.x, b.z - a.z);
+      if (segLen < 0.05) continue;
+      const cut = Math.min(segLen * 0.25, 8.5);
+      const t1 = cut / segLen;
+      const t2 = 1 - t1;
+      if (i > 0) next.push(a.clone().lerp(b, t1));
+      if (i < smoothedPoints.length - 2) next.push(a.clone().lerp(b, t2));
+    }
+    next.push(smoothedPoints[smoothedPoints.length - 1].clone());
+    smoothedPoints = next;
+  }
+  for (let iter = 0; iter < 2; iter++) {
+    if (smoothedPoints.length < 3) break;
+    const next = smoothedPoints.map((p) => p.clone());
+    for (let i = 1; i < smoothedPoints.length - 1; i++) {
+      next[i].x =
+        smoothedPoints[i - 1].x * 0.25 + smoothedPoints[i].x * 0.5 + smoothedPoints[i + 1].x * 0.25;
+      next[i].y =
+        smoothedPoints[i - 1].y * 0.25 + smoothedPoints[i].y * 0.5 + smoothedPoints[i + 1].y * 0.25;
+      next[i].z =
+        smoothedPoints[i - 1].z * 0.25 + smoothedPoints[i].z * 0.5 + smoothedPoints[i + 1].z * 0.25;
+    }
+    smoothedPoints = next;
+  }
+
+  const trackCurve = new THREE.CatmullRomCurve3(smoothedPoints, false, 'centripetal');
   trackCurve.arcLengthDivisions = 2400;
   const trackLengthMeters = trackCurve.getLength();
 
@@ -919,7 +983,201 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
       tangent,
       horizForward,
       right,
+      leftBarrierValid: true,
+      rightBarrierValid: true,
     });
+  }
+
+  // Pre-sample dense centerline points every 1.0m along trackCurve for universal clearance & anti-fold filter
+  const denseCount = Math.max(1000, Math.ceil(trackLengthMeters));
+  const denseSampleX = new Float64Array(denseCount + 1);
+  const denseSampleZ = new Float64Array(denseCount + 1);
+  const denseSampleS = new Float64Array(denseCount + 1);
+  const denseCellSize = 32;
+  const denseGrid = new Map<string, number[]>();
+
+  for (let i = 0; i <= denseCount; i++) {
+    const u = i / denseCount;
+    const p = trackCurve.getPointAt(u);
+    denseSampleX[i] = p.x;
+    denseSampleZ[i] = p.z;
+    denseSampleS[i] = u * trackLengthMeters;
+    const cx = Math.floor(p.x / denseCellSize);
+    const cz = Math.floor(p.z / denseCellSize);
+    const key = `${cx},${cz}`;
+    let bucket = denseGrid.get(key);
+    if (!bucket) {
+      bucket = [];
+      denseGrid.set(key, bucket);
+    }
+    bucket.push(i);
+  }
+
+  const clearanceDistSq = 7.8 * 7.8;
+  const minSplineSepMeters = 9.0;
+  const isPointInsideOtherLane = (vx: number, vz: number, sMeters: number): boolean => {
+    const cx = Math.floor(vx / denseCellSize);
+    const cz = Math.floor(vz / denseCellSize);
+    for (let dxCell = -1; dxCell <= 1; dxCell++) {
+      for (let dzCell = -1; dzCell <= 1; dzCell++) {
+        const bucket = denseGrid.get(`${cx + dxCell},${cz + dzCell}`);
+        if (!bucket) continue;
+        for (let k = 0; k < bucket.length; k++) {
+          const idx = bucket[k];
+          if (Math.abs(sMeters - denseSampleS[idx]) <= minSplineSepMeters) continue;
+          const dx = vx - denseSampleX[idx];
+          const dz = vz - denseSampleZ[idx];
+          if (dx * dx + dz * dz < clearanceDistSq) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  // Compute left & right kerb/barrier validity masks:
+  // 1) Discard inner kerb & barrier on tight inside apexes (turning radius R < 8.5m)
+  // 2) Discard any kerb (+/-7.6m) or barrier (+/-8.2m) within 7.8m of any centerline > 9.0m away
+  const { roadWidthMeters, kerbWidthMeters, barrierOffsetMeters } = SALATIGA_TRACK_CONFIG;
+  const kerbCenterOffset = roadWidthMeters * 0.5 + kerbWidthMeters * 0.5; // 7.6m
+  const leftValidMask: boolean[] = new Array(samples.length);
+  const rightValidMask: boolean[] = new Array(samples.length);
+
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    let leftOk = true;
+    let rightOk = true;
+
+    const iPrev = Math.max(0, i - 1);
+    const iNext = Math.min(samples.length - 1, i + 1);
+    const ds = samples[iNext].distanceMeters - samples[iPrev].distanceMeters;
+    const hfPrev = samples[iPrev].horizForward;
+    const hfNext = samples[iNext].horizForward;
+    const dot = THREE.MathUtils.clamp(
+      hfPrev.x * hfNext.x + hfPrev.z * hfNext.z,
+      -1,
+      1,
+    );
+    const dTheta = Math.acos(dot);
+    const turnRadius = dTheta > 1e-4 ? ds / dTheta : 9999;
+    if (turnRadius < 8.5) {
+      const dHfx = hfNext.x - hfPrev.x;
+      const dHfz = hfNext.z - hfPrev.z;
+      const turnTowardRight = dHfx * s.right.x + dHfz * s.right.z;
+      if (turnTowardRight > 0) {
+        rightOk = false;
+      } else {
+        leftOk = false;
+      }
+    }
+
+    if (leftOk) {
+      const lxKerb = s.position.x - s.right.x * kerbCenterOffset;
+      const lzKerb = s.position.z - s.right.z * kerbCenterOffset;
+      const lxBar = s.position.x - s.right.x * barrierOffsetMeters;
+      const lzBar = s.position.z - s.right.z * barrierOffsetMeters;
+      leftOk =
+        !isPointInsideOtherLane(lxKerb, lzKerb, s.distanceMeters) &&
+        !isPointInsideOtherLane(lxBar, lzBar, s.distanceMeters);
+    }
+
+    if (rightOk) {
+      const rxKerb = s.position.x + s.right.x * kerbCenterOffset;
+      const rzKerb = s.position.z + s.right.z * kerbCenterOffset;
+      const rxBar = s.position.x + s.right.x * barrierOffsetMeters;
+      const rzBar = s.position.z + s.right.z * barrierOffsetMeters;
+      rightOk =
+        !isPointInsideOtherLane(rxKerb, rzKerb, s.distanceMeters) &&
+        !isPointInsideOtherLane(rxBar, rzBar, s.distanceMeters);
+    }
+
+    leftValidMask[i] = leftOk;
+    rightValidMask[i] = rightOk;
+  }
+
+  // Purge short orphan barrier/kerb stubs (< 8.0m) so isolated fragments & end-posts never appear in junctions
+  const purgeShortBarrierRuns = (mask: boolean[]) => {
+    let idx = 0;
+    while (idx < mask.length) {
+      if (!mask[idx]) {
+        idx++;
+        continue;
+      }
+      let endIdx = idx;
+      while (endIdx + 1 < mask.length && mask[endIdx + 1]) {
+        endIdx++;
+      }
+      const runLengthMeters = samples[endIdx].distanceMeters - samples[idx].distanceMeters;
+      if (runLengthMeters < 8.0) {
+        for (let k = idx; k <= endIdx; k++) {
+          mask[k] = false;
+        }
+      }
+      idx = endIdx + 1;
+    }
+  };
+  purgeShortBarrierRuns(leftValidMask);
+  purgeShortBarrierRuns(rightValidMask);
+
+  for (let i = 0; i < samples.length; i++) {
+    samples[i].leftBarrierValid = leftValidMask[i];
+    samples[i].rightBarrierValid = rightValidMask[i];
+  }
+
+  // Deterministic vertical separation on overlapping road asphalt ribbons (eliminates z-fighting at Bundaran Tamansari & U-turns)
+  const roadYBias = new Float32Array(samples.length);
+  const rawSecondPassBias = new Float32Array(samples.length);
+  const overlapRoadDistSq = 15.5 * 15.5;
+  const overlapMinSplineSep = 12.0;
+
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    if (s.distanceMeters <= 24) {
+      // Smoothly lift start straight +1.4cm above crossing roundabout ribbon
+      const fade = s.distanceMeters <= 16 ? 1 : 1 - (s.distanceMeters - 16) / 8;
+      roadYBias[i] = 0.014 * fade;
+      continue;
+    }
+
+    // Check if this later pass overlaps an earlier non-adjacent centerline (s_other < s - 12m)
+    const cx = Math.floor(s.position.x / denseCellSize);
+    const cz = Math.floor(s.position.z / denseCellSize);
+    let overlapsEarlier = false;
+    for (let dxCell = -1; dxCell <= 1 && !overlapsEarlier; dxCell++) {
+      for (let dzCell = -1; dzCell <= 1 && !overlapsEarlier; dzCell++) {
+        const bucket = denseGrid.get(`${cx + dxCell},${cz + dzCell}`);
+        if (!bucket) continue;
+        for (let k = 0; k < bucket.length; k++) {
+          const idx = bucket[k];
+          if (denseSampleS[idx] >= s.distanceMeters - overlapMinSplineSep) continue;
+          const dx = s.position.x - denseSampleX[idx];
+          const dz = s.position.z - denseSampleZ[idx];
+          if (dx * dx + dz * dz < overlapRoadDistSq) {
+            overlapsEarlier = true;
+            break;
+          }
+        }
+      }
+    }
+    if (overlapsEarlier) {
+      rawSecondPassBias[i] = -0.014;
+    }
+  }
+
+  // Smooth the -0.014m overlap bias over +-4 samples (~8m) so transitions are completely seamless
+  for (let i = 0; i < samples.length; i++) {
+    if (samples[i].distanceMeters <= 24) continue;
+    let minNeighborBias = 0;
+    for (let d = -4; d <= 4; d++) {
+      const ni = i + d;
+      if (ni >= 0 && ni < samples.length && rawSecondPassBias[ni] < 0) {
+        const weight = 1 - Math.abs(d) / 5;
+        const b = rawSecondPassBias[ni] * weight;
+        if (b < minNeighborBias) minNeighborBias = b;
+      }
+    }
+    roadYBias[i] = minNeighborBias;
   }
 
   // Compute circuit world bounds
@@ -937,28 +1195,42 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
   const group = new THREE.Group();
   group.name = 'SalatigaCircuitGroup';
 
-  const { roadWidthMeters, kerbWidthMeters, barrierOffsetMeters } = SALATIGA_TRACK_CONFIG;
   const roadHalf = roadWidthMeters * 0.5;
 
-  // 1. Dark Textured Asphalt Ribbon (14m wide)
+  // 1. Dark Textured Asphalt Ribbon (14m wide) with polygonOffset + junction overlap separation
   const asphaltTex = createAsphaltTexture();
   const asphaltMat = new THREE.MeshStandardMaterial({
     map: asphaltTex,
     roughness: 0.78,
     metalness: 0.05,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
   });
-  const roadGeo = buildHorizontalRibbonGeometry(samples, -roadHalf, roadHalf, 0, 0, 16);
+  const roadGeo = buildHorizontalRibbonGeometry(
+    samples,
+    -roadHalf,
+    roadHalf,
+    0,
+    0,
+    16,
+    undefined,
+    roadYBias,
+  );
   const roadMesh = new THREE.Mesh(roadGeo, asphaltMat);
   roadMesh.name = 'AsphaltRoad';
   roadMesh.receiveShadow = true;
   group.add(roadMesh);
 
-  // 2. Alternating Red/White FIA Kerbs (1.2m wide along both edges)
+  // 2. Alternating Red/White FIA Kerbs (1.2m wide along cleared edges only)
   const kerbTex = createKerbTexture();
   const kerbMat = new THREE.MeshStandardMaterial({
     map: kerbTex,
     roughness: 0.65,
     metalness: 0.05,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
   const leftKerbGeo = buildHorizontalRibbonGeometry(
     samples,
@@ -967,6 +1239,8 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     0.04,
     0.012,
     2.4,
+    leftValidMask,
+    roadYBias,
   );
   const rightKerbGeo = buildHorizontalRibbonGeometry(
     samples,
@@ -975,6 +1249,8 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     0.012,
     0.04,
     2.4,
+    rightValidMask,
+    roadYBias,
   );
   const leftKerb = new THREE.Mesh(leftKerbGeo, kerbMat);
   leftKerb.receiveShadow = true;
@@ -982,7 +1258,7 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
   rightKerb.receiveShadow = true;
   group.add(leftKerb, rightKerb);
 
-  // Subtle concrete shoulder apron dropping from outer kerb into clamped terrain so zero gaps appear
+  // Subtle concrete shoulder apron dropping from cleared outer kerbs into clamped terrain
   const shoulderMat = new THREE.MeshStandardMaterial({
     color: 0x3b4046,
     roughness: 0.9,
@@ -995,6 +1271,7 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     -0.38,
     0.04,
     8,
+    leftValidMask,
   );
   const rightShoulderGeo = buildHorizontalRibbonGeometry(
     samples,
@@ -1003,20 +1280,21 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     0.04,
     -0.38,
     8,
+    rightValidMask,
   );
   group.add(
     new THREE.Mesh(leftShoulderGeo, shoulderMat),
     new THREE.Mesh(rightShoulderGeo, shoulderMat),
   );
 
-  // 3. Metallic Armco Guardrails at ±8.2m + InstancedMesh Steel Posts
+  // 3. Metallic Armco Guardrails at ±8.2m (junction-filtered) + InstancedMesh Steel Posts + Terminal End-Post Caps
   const armcoMat = new THREE.MeshStandardMaterial({
     color: 0xc2cbd4,
     metalness: 0.8,
     roughness: 0.32,
   });
-  const leftBarrierGeo = buildArmcoBarrierGeometry(samples, -barrierOffsetMeters);
-  const rightBarrierGeo = buildArmcoBarrierGeometry(samples, barrierOffsetMeters);
+  const leftBarrierGeo = buildArmcoBarrierGeometry(samples, -barrierOffsetMeters, leftValidMask);
+  const rightBarrierGeo = buildArmcoBarrierGeometry(samples, barrierOffsetMeters, rightValidMask);
   const leftBarrier = new THREE.Mesh(leftBarrierGeo, armcoMat);
   leftBarrier.castShadow = true;
   leftBarrier.receiveShadow = true;
@@ -1025,42 +1303,109 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
   rightBarrier.receiveShadow = true;
   group.add(leftBarrier, rightBarrier);
 
-  // Instanced steel guardrail posts every ~4m (2 segments)
+  // Instanced steel guardrail posts only along active barrier segments every ~4m (2 segments)
   const postStep = 2;
-  const postSampleCount = Math.floor(samples.length / postStep);
-  const postCount = postSampleCount * 2;
+  const postSpecs: { x: number; y: number; z: number; yaw: number }[] = [];
+  const endCapSpecs: { x: number; y: number; z: number; yaw: number }[] = [];
+
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    const yaw = Math.atan2(s.horizForward.x, s.horizForward.z);
+
+    if (leftValidMask[i]) {
+      if (i % postStep === 0) {
+        const off = -(barrierOffsetMeters + 0.11);
+        postSpecs.push({
+          x: s.position.x + s.right.x * off,
+          y: s.position.y + 0.34,
+          z: s.position.z + s.right.z * off,
+          yaw,
+        });
+      }
+      const isRunStart = i === 0 || !leftValidMask[i - 1];
+      const isRunEnd = i === samples.length - 1 || !leftValidMask[i + 1];
+      if (isRunStart || isRunEnd) {
+        const off = -(barrierOffsetMeters + 0.04);
+        endCapSpecs.push({
+          x: s.position.x + s.right.x * off,
+          y: s.position.y + 0.38,
+          z: s.position.z + s.right.z * off,
+          yaw,
+        });
+      }
+    }
+
+    if (rightValidMask[i]) {
+      if (i % postStep === 0) {
+        const off = barrierOffsetMeters + 0.11;
+        postSpecs.push({
+          x: s.position.x + s.right.x * off,
+          y: s.position.y + 0.34,
+          z: s.position.z + s.right.z * off,
+          yaw,
+        });
+      }
+      const isRunStart = i === 0 || !rightValidMask[i - 1];
+      const isRunEnd = i === samples.length - 1 || !rightValidMask[i + 1];
+      if (isRunStart || isRunEnd) {
+        const off = barrierOffsetMeters + 0.04;
+        endCapSpecs.push({
+          x: s.position.x + s.right.x * off,
+          y: s.position.y + 0.38,
+          z: s.position.z + s.right.z * off,
+          yaw,
+        });
+      }
+    }
+  }
+
   const postGeo = new THREE.BoxGeometry(0.1, 0.96, 0.14);
   const postMat = new THREE.MeshStandardMaterial({
     color: 0x6b7480,
     metalness: 0.72,
     roughness: 0.42,
   });
-  const postInstanced = new THREE.InstancedMesh(postGeo, postMat, postCount);
+  const postInstanced = new THREE.InstancedMesh(postGeo, postMat, Math.max(1, postSpecs.length));
   postInstanced.castShadow = true;
   postInstanced.receiveShadow = true;
 
   const dummy = new THREE.Object3D();
-  let instanceIdx = 0;
-  for (let i = 0; i < postSampleCount; i++) {
-    const s = samples[i * postStep];
-    const yaw = Math.atan2(s.horizForward.x, s.horizForward.z);
-    for (const side of [-1, 1]) {
-      const off = side * (barrierOffsetMeters + 0.11);
-      dummy.position.set(
-        s.position.x + s.right.x * off,
-        s.position.y + 0.34,
-        s.position.z + s.right.z * off,
-      );
-      dummy.rotation.set(0, yaw, 0);
-      dummy.updateMatrix();
-      postInstanced.setMatrixAt(instanceIdx++, dummy.matrix);
-    }
+  for (let i = 0; i < postSpecs.length; i++) {
+    const p = postSpecs[i];
+    dummy.position.set(p.x, p.y, p.z);
+    dummy.rotation.set(0, p.yaw, 0);
+    dummy.updateMatrix();
+    postInstanced.setMatrixAt(i, dummy.matrix);
   }
+  postInstanced.count = postSpecs.length;
   postInstanced.instanceMatrix.needsUpdate = true;
   postInstanced.computeBoundingSphere();
   group.add(postInstanced);
 
-  // 4. Start/Finish Gantry Arch at Bundaran Tamansari (t = 0)
+  // Clean terminal end-post caps where barriers terminate at junctions
+  if (endCapSpecs.length > 0) {
+    const capGeo = new THREE.BoxGeometry(0.22, 0.92, 0.28);
+    const capMat = new THREE.MeshStandardMaterial({
+      color: 0xd97706,
+      metalness: 0.45,
+      roughness: 0.36,
+    });
+    const endCapInstanced = new THREE.InstancedMesh(capGeo, capMat, endCapSpecs.length);
+    endCapInstanced.castShadow = true;
+    endCapInstanced.receiveShadow = true;
+    for (let i = 0; i < endCapSpecs.length; i++) {
+      const c = endCapSpecs[i];
+      dummy.position.set(c.x, c.y, c.z);
+      dummy.rotation.set(0, c.yaw, 0);
+      dummy.updateMatrix();
+      endCapInstanced.setMatrixAt(i, dummy.matrix);
+    }
+    endCapInstanced.instanceMatrix.needsUpdate = true;
+    endCapInstanced.computeBoundingSphere();
+    group.add(endCapInstanced);
+  }
+
+  // 4. Start/Finish Gantry Arch at Bundaran Tamansari (t = 0, cantilevered to keep roundabout clear)
   const gantry = buildStartFinishGantry(samples[0]);
   group.add(gantry);
 
@@ -1071,6 +1416,137 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
   // 6. Stylized Mount Merbabu Backdrop (> 3,200m from route perimeter)
   const merbabu = buildMountMerbabuBackdrop(minX, maxX, maxZ);
   group.add(merbabu);
+
+  // Build O(1) spatial hash grid over track segments for zero-GC runtime collision & leg-transition queries
+  const segGridCellSize = 32;
+  const segGrid = new Map<string, number[]>();
+  const numTrackSegs = samples.length - 1;
+  for (let i = 0; i < numTrackSegs; i++) {
+    const a = samples[i].position;
+    const b = samples[i + 1].position;
+    const minCx = Math.floor(Math.min(a.x, b.x) / segGridCellSize);
+    const maxCx = Math.floor(Math.max(a.x, b.x) / segGridCellSize);
+    const minCz = Math.floor(Math.min(a.z, b.z) / segGridCellSize);
+    const maxCz = Math.floor(Math.max(a.z, b.z) / segGridCellSize);
+    for (let cx = minCx; cx <= maxCx; cx++) {
+      for (let cz = minCz; cz <= maxCz; cz++) {
+        const key = `${cx},${cz}`;
+        let list = segGrid.get(key);
+        if (!list) {
+          list = [];
+          segGrid.set(key, list);
+        }
+        list.push(i);
+      }
+    }
+  }
+  const queryStamp = new Int32Array(numTrackSegs);
+  let queryStampId = 1;
+
+  const queryClosestTrack = (
+    px: number,
+    pz: number,
+    out?: TrackClosestQueryResult,
+  ): TrackClosestQueryResult => {
+    const res: TrackClosestQueryResult = out ?? {
+      segIndex: 0,
+      t: 0,
+      distSq: Infinity,
+      distanceMeters: 0,
+      lateralOffset: 0,
+      roadY: samples[0].position.y,
+      projX: samples[0].position.x,
+      projZ: samples[0].position.z,
+      tangent: samples[0].tangent,
+      right: samples[0].right,
+    };
+
+    const cx = Math.floor(px / segGridCellSize);
+    const cz = Math.floor(pz / segGridCellSize);
+    let bestIdx = 0;
+    let bestT = 0;
+    let bestDistSq = Infinity;
+    let bestProjX = samples[0].position.x;
+    let bestProjZ = samples[0].position.z;
+    let bestRoadY = samples[0].position.y;
+    queryStampId++;
+
+    for (let dxCell = -1; dxCell <= 1; dxCell++) {
+      for (let dzCell = -1; dzCell <= 1; dzCell++) {
+        const list = segGrid.get(`${cx + dxCell},${cz + dzCell}`);
+        if (!list) continue;
+        for (let k = 0; k < list.length; k++) {
+          const idx = list[k];
+          if (queryStamp[idx] === queryStampId) continue;
+          queryStamp[idx] = queryStampId;
+
+          const a = samples[idx].position;
+          const b = samples[idx + 1].position;
+          const abx = b.x - a.x;
+          const abz = b.z - a.z;
+          const lenSq = abx * abx + abz * abz;
+          let t = 0;
+          if (lenSq > 1e-8) {
+            t = ((px - a.x) * abx + (pz - a.z) * abz) / lenSq;
+            if (t < 0) t = 0;
+            else if (t > 1) t = 1;
+          }
+          const projX = a.x + abx * t;
+          const projZ = a.z + abz * t;
+          const dSq = (px - projX) * (px - projX) + (pz - projZ) * (pz - projZ);
+          if (dSq < bestDistSq) {
+            bestDistSq = dSq;
+            bestIdx = idx;
+            bestT = t;
+            bestProjX = projX;
+            bestProjZ = projZ;
+            bestRoadY = a.y + (b.y - a.y) * t;
+          }
+        }
+      }
+    }
+
+    if (bestDistSq === Infinity) {
+      for (let idx = 0; idx < numTrackSegs; idx++) {
+        const a = samples[idx].position;
+        const b = samples[idx + 1].position;
+        const abx = b.x - a.x;
+        const abz = b.z - a.z;
+        const lenSq = abx * abx + abz * abz;
+        let t = 0;
+        if (lenSq > 1e-8) {
+          t = ((px - a.x) * abx + (pz - a.z) * abz) / lenSq;
+          if (t < 0) t = 0;
+          else if (t > 1) t = 1;
+        }
+        const projX = a.x + abx * t;
+        const projZ = a.z + abz * t;
+        const dSq = (px - projX) * (px - projX) + (pz - projZ) * (pz - projZ);
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq;
+          bestIdx = idx;
+          bestT = t;
+          bestProjX = projX;
+          bestProjZ = projZ;
+          bestRoadY = a.y + (b.y - a.y) * t;
+        }
+      }
+    }
+
+    const s0 = samples[bestIdx];
+    const s1 = samples[bestIdx + 1];
+    res.segIndex = bestIdx;
+    res.t = bestT;
+    res.distSq = bestDistSq;
+    res.distanceMeters = THREE.MathUtils.lerp(s0.distanceMeters, s1.distanceMeters, bestT);
+    res.roadY = bestRoadY;
+    res.projX = bestProjX;
+    res.projZ = bestProjZ;
+    res.tangent = s0.tangent;
+    res.right = s0.right;
+    res.lateralOffset = (px - bestProjX) * s0.right.x + (pz - bestProjZ) * s0.right.z;
+    return res;
+  };
 
   const dispose = () => {
     const geometries = new Set<THREE.BufferGeometry>();
@@ -1101,6 +1577,7 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     trackCurve,
     trackLengthMeters,
     samples,
+    queryClosestTrack,
     dispose,
   };
 }

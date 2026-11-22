@@ -7,6 +7,7 @@ import salatigaRouteRaw from './data/salatiga-route.geojson?raw';
 import {
   buildSalatigaTrack,
   SalatigaGeoJson,
+  TrackClosestQueryResult,
   TrackSample,
   worldToGps,
 } from './game/salatigaTrack';
@@ -57,6 +58,7 @@ function detectSoftwareWebGL(): boolean {
 interface ClosestTrackHit {
   segIndex: number;
   t: number;
+  distSq: number;
   distanceMeters: number;
   lateralOffset: number;
   roadY: number;
@@ -130,6 +132,7 @@ function findClosestOnTrack(
   return {
     segIndex: bestIdx,
     t: bestT,
+    distSq: bestDistSq,
     distanceMeters,
     lateralOffset,
     roadY: bestRoadY,
@@ -409,6 +412,19 @@ export default function App() {
     }
 
     const maxHalfLateral = 7.15; // Car half-width ~0.95m inside ±8.2m Armco guardrails
+    const maxJunctionHalfLateral = 7.6; // Unobstructed clearance to nearest valid centerline at open junctions
+    const _globalHit: TrackClosestQueryResult = {
+      segIndex: 0,
+      t: 0,
+      distSq: 0,
+      distanceMeters: 0,
+      lateralOffset: 0,
+      roadY: startSample.position.y,
+      projX: startSample.position.x,
+      projZ: startSample.position.z,
+      tangent: startSample.tangent,
+      right: startSample.right,
+    };
 
     const tick = (nowArg?: number) => {
       if (disposed) return;
@@ -473,25 +489,48 @@ export default function App() {
       carState.x += Math.sin(carState.yaw) * carState.speed * dt;
       carState.z += Math.cos(carState.yaw) * carState.speed * dt;
 
-      // 2. Track Surface Clamping & Armco Guardrail Containment
+      // 2. Track Surface Clamping & Junction-Aware Armco Guardrail Containment
       const hit = findClosestOnTrack(
         trackBuild.samples,
         carState.x,
         carState.z,
         carState.lastSegIndex,
       );
-      carState.lastSegIndex = hit.segIndex;
-      carState.distanceMeters = hit.distanceMeters;
+      const globalHit = trackBuild.queryClosestTrack(carState.x, carState.z, _globalHit);
 
-      if (Math.abs(hit.lateralOffset) > maxHalfLateral) {
-        const clampedLat = Math.sign(hit.lateralOffset) * maxHalfLateral;
-        carState.x = hit.projX + hit.right.x * clampedLat;
-        carState.z = hit.projZ + hit.right.z * clampedLat;
-        // Gently scrub speed on Armco wall rub while sliding along barrier tangent
-        carState.speed *= 1 - Math.min(0.4, 2.2 * dt);
+      const maxHalfLateralSq = maxHalfLateral * maxHalfLateral;
+      let activeHit: ClosestTrackHit | TrackClosestQueryResult = hit;
+      if (hit.distSq > maxHalfLateralSq && globalHit.distSq < hit.distSq * 0.85) {
+        activeHit = globalHit;
       }
 
-      syncCarTransform(hit.tangent, hit.roadY);
+      carState.lastSegIndex = activeHit.segIndex;
+      carState.distanceMeters = activeHit.distanceMeters;
+
+      if (globalHit.distSq > maxHalfLateralSq) {
+        const s0 = trackBuild.samples[globalHit.segIndex];
+        const s1 = trackBuild.samples[globalHit.segIndex + 1];
+        const hasActiveBarrier =
+          globalHit.lateralOffset >= 0
+            ? s0.rightBarrierValid && s1.rightBarrierValid
+            : s0.leftBarrierValid && s1.leftBarrierValid;
+
+        const effectiveLimit = hasActiveBarrier ? maxHalfLateral : maxJunctionHalfLateral;
+        if (globalHit.distSq > effectiveLimit * effectiveLimit) {
+          const clampedLat = Math.sign(globalHit.lateralOffset) * effectiveLimit;
+          carState.x = globalHit.projX + globalHit.right.x * clampedLat;
+          carState.z = globalHit.projZ + globalHit.right.z * clampedLat;
+          if (hasActiveBarrier) {
+            // Gently scrub speed on Armco wall rub while sliding along barrier tangent
+            carState.speed *= 1 - Math.min(0.4, 2.2 * dt);
+          }
+          carState.lastSegIndex = globalHit.segIndex;
+          carState.distanceMeters = globalHit.distanceMeters;
+          activeHit = globalHit;
+        }
+      }
+
+      syncCarTransform(activeHit.tangent, activeHit.roadY);
 
       // Wheel rotation & brake lights
       const wheelSpinDelta = (carState.speed * dt) / 0.33;
