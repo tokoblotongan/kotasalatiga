@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Camera, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import salatigaRouteRaw from './data/salatiga-route.geojson?raw';
+import salatigaBuildingsRaw from './data/salatiga-buildings.geojson?raw';
 import {
   buildSalatigaTrack,
   SalatigaGeoJson,
@@ -11,6 +12,7 @@ import {
   TrackSample,
   worldToGps,
 } from './game/salatigaTrack';
+import { buildSalatigaCustomBuildings } from './game/salatigaCustomBuildings';
 import { buildF1TestCar } from './game/f1TestCar';
 
 type CameraMode = 'chase' | 'orbit';
@@ -247,21 +249,30 @@ export default function App() {
     const trackBuild = buildSalatigaTrack(routeGeoJson);
     scene.add(trackBuild.group);
 
-    // Configure max texture anisotropy on track textures
+    // Build Stage 2 Custom Salatiga Landmarks & 60 FPS Merged OSM Corridor Buildings
+    const buildingsGeoJson = JSON.parse(salatigaBuildingsRaw);
+    const buildingsBuild = buildSalatigaCustomBuildings(trackBuild.trackCurve, buildingsGeoJson);
+    scene.add(buildingsBuild.group);
+
+    // Configure max texture anisotropy on track and building textures
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
-    trackBuild.group.traverse((obj) => {
-      const mesh = obj as THREE.Mesh;
-      if (mesh.isMesh && mesh.material) {
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        for (const m of mats) {
-          const map = (m as THREE.MeshStandardMaterial).map;
-          if (map) {
-            map.anisotropy = maxAniso;
-            map.needsUpdate = true;
+    const applyMaxAniso = (root: THREE.Object3D) => {
+      root.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh && mesh.material) {
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const m of mats) {
+            const map = (m as THREE.MeshStandardMaterial).map;
+            if (map) {
+              map.anisotropy = maxAniso;
+              map.needsUpdate = true;
+            }
           }
         }
-      }
-    });
+      });
+    };
+    applyMaxAniso(trackBuild.group);
+    applyMaxAniso(buildingsBuild.group);
 
     // Spawn ONLY 1 lightweight low-poly F1 test car at Bundaran Tamansari start line (t = 0)
     const carRig = buildF1TestCar();
@@ -626,6 +637,7 @@ export default function App() {
 
       orbitControls.dispose();
       carRig.dispose();
+      buildingsBuild.dispose();
       trackBuild.dispose();
       envTarget.dispose();
       renderer.dispose();
