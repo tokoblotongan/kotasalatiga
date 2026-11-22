@@ -2,23 +2,29 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { Camera, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
+import { Building2, Camera, ChevronDown, ChevronUp, Eye, ImageUp, RotateCcw, X } from 'lucide-react';
 import salatigaRouteRaw from './data/salatiga-route.geojson?raw';
 import salatigaBuildingsRaw from './data/salatiga-buildings.geojson?raw';
 import {
   buildSalatigaTrack,
+  gpsToWorld,
   SalatigaGeoJson,
   TrackClosestQueryResult,
   TrackSample,
   worldToGps,
 } from './game/salatigaTrack';
-import { buildSalatigaCustomBuildings } from './game/salatigaCustomBuildings';
+import {
+  buildSalatigaCustomBuildings,
+  SALATIGA_CUSTOM_BUILDINGS,
+  SalatigaCustomBuilding,
+} from './game/salatigaCustomBuildings';
 import { buildF1TestCar } from './game/f1TestCar';
 
 type CameraMode = 'chase' | 'orbit';
 
 interface TelemetrySnapshot {
   fps: number;
+  drawCalls: number;
   distanceMeters: number;
   trackLengthMeters: number;
   worldX: number;
@@ -150,12 +156,23 @@ export default function App() {
   const cameraModeRef = useRef<CameraMode>('chase');
   const resetCarRef = useRef<(() => void) | null>(null);
   const toggleCameraRef = useRef<(() => void) | null>(null);
+  const rebuildBuildingsRef = useRef<((nextBuildings: SalatigaCustomBuilding[]) => void) | null>(null);
+  const focusBuildingRef = useRef<((b: SalatigaCustomBuilding) => void) | null>(null);
+  const blobUrlsRef = useRef<Set<string>>(new Set());
 
   const [cameraMode, setCameraMode] = useState<CameraMode>('chase');
   const [controlsCollapsed, setControlsCollapsed] = useState(false);
+  const [workbenchOpen, setWorkbenchOpen] = useState(false);
+  const [customBuildings, setCustomBuildings] = useState<SalatigaCustomBuilding[]>(() =>
+    SALATIGA_CUSTOM_BUILDINGS.map((b) => ({ ...b })),
+  );
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string>(
+    SALATIGA_CUSTOM_BUILDINGS[0].id,
+  );
   const [contextLost, setContextLost] = useState(false);
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot>({
     fps: 60,
+    drawCalls: 0,
     distanceMeters: 0,
     trackLengthMeters: 5016,
     worldX: 0,
@@ -249,9 +266,13 @@ export default function App() {
     const trackBuild = buildSalatigaTrack(routeGeoJson);
     scene.add(trackBuild.group);
 
-    // Build Stage 2 Custom Salatiga Landmarks & 60 FPS Merged OSM Corridor Buildings
+    // Build Stage 2 Custom Salatiga Landmarks & 60 FPS Chunked OSM Corridor Buildings
     const buildingsGeoJson = JSON.parse(salatigaBuildingsRaw);
-    const buildingsBuild = buildSalatigaCustomBuildings(trackBuild.trackCurve, buildingsGeoJson);
+    let buildingsBuild = buildSalatigaCustomBuildings(
+      trackBuild.trackCurve,
+      buildingsGeoJson,
+      customBuildings,
+    );
     scene.add(buildingsBuild.group);
 
     // Configure max texture anisotropy on track and building textures
@@ -273,6 +294,18 @@ export default function App() {
     };
     applyMaxAniso(trackBuild.group);
     applyMaxAniso(buildingsBuild.group);
+
+    rebuildBuildingsRef.current = (nextBuildings: SalatigaCustomBuilding[]) => {
+      scene.remove(buildingsBuild.group);
+      buildingsBuild.dispose();
+      buildingsBuild = buildSalatigaCustomBuildings(
+        trackBuild.trackCurve,
+        buildingsGeoJson,
+        nextBuildings,
+      );
+      scene.add(buildingsBuild.group);
+      applyMaxAniso(buildingsBuild.group);
+    };
 
     // Spawn ONLY 1 lightweight low-poly F1 test car at Bundaran Tamansari start line (t = 0)
     const carRig = buildF1TestCar();
@@ -362,9 +395,34 @@ export default function App() {
     };
     toggleCameraRef.current = toggleCameraMode;
 
+    focusBuildingRef.current = (b: SalatigaCustomBuilding) => {
+      const wp = gpsToWorld(b.lon, b.lat);
+      const hit = findClosestOnTrack(trackBuild.samples, wp.x, wp.z, null);
+      const targetY = hit.roadY + Math.max(2.5, b.floors * (b.floorHeight ?? 3.6) * 0.45);
+      cameraModeRef.current = 'orbit';
+      setCameraMode('orbit');
+      orbitControls.enabled = true;
+      orbitControls.target.set(wp.x, targetY, wp.z);
+      const yawRad = THREE.MathUtils.degToRad(180 - b.rotationDeg);
+      const viewDist = Math.max(24, Math.max(b.widthMeters, b.depthMeters) * 1.45);
+      camera.position.set(
+        wp.x + Math.sin(yawRad) * viewDist,
+        targetY + viewDist * 0.48,
+        wp.z + Math.cos(yawRad) * viewDist,
+      );
+      orbitControls.update();
+    };
+
     // Keyboard input handling
     const keys: Record<string, boolean> = {};
     const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')
+      ) {
+        return;
+      }
       if (e.repeat) return;
       keys[e.code] = true;
 
@@ -374,6 +432,8 @@ export default function App() {
         resetToNearestTrack();
       } else if (e.code === 'KeyH') {
         setControlsCollapsed((prev) => !prev);
+      } else if (e.code === 'KeyB') {
+        setWorkbenchOpen((prev) => !prev);
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -601,6 +661,7 @@ export default function App() {
         const gps = worldToGps(carState.x, carState.z, carState.y);
         setTelemetry({
           fps: currentFps,
+          drawCalls: renderer.info.render.calls,
           distanceMeters: carState.distanceMeters,
           trackLengthMeters: trackBuild.trackLengthMeters,
           worldX: carState.x,
@@ -627,6 +688,11 @@ export default function App() {
 
     return () => {
       disposed = true;
+      rebuildBuildingsRef.current = null;
+      focusBuildingRef.current = null;
+      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      blobUrlsRef.current.clear();
+
       cancelAnimationFrame(frameId);
       clearTimeout(frameId);
       window.removeEventListener('keydown', onKeyDown);
@@ -646,6 +712,39 @@ export default function App() {
       }
     };
   }, []);
+
+  const selectedBuilding =
+    customBuildings.find((b) => b.id === selectedBuildingId) ?? customBuildings[0];
+
+  const updateSelectedBuilding = (patch: Partial<SalatigaCustomBuilding>) => {
+    const next = customBuildings.map((b) =>
+      b.id === selectedBuilding.id ? { ...b, ...patch } : b,
+    );
+    setCustomBuildings(next);
+    rebuildBuildingsRef.current?.(next);
+  };
+
+  const handleFacadePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const prevUrl = selectedBuilding.facadeTextureUrl;
+    if (prevUrl && blobUrlsRef.current.has(prevUrl)) {
+      URL.revokeObjectURL(prevUrl);
+      blobUrlsRef.current.delete(prevUrl);
+    }
+    const objectUrl = URL.createObjectURL(file);
+    blobUrlsRef.current.add(objectUrl);
+    updateSelectedBuilding({ facadeTextureUrl: objectUrl });
+    e.target.value = '';
+  };
+
+  const handleResetBuildings = () => {
+    blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    blobUrlsRef.current.clear();
+    const defaults = SALATIGA_CUSTOM_BUILDINGS.map((b) => ({ ...b }));
+    setCustomBuildings(defaults);
+    rebuildBuildingsRef.current?.(defaults);
+  };
 
   const totalTrackM = Math.round(telemetry.trackLengthMeters);
   const progressPct =
@@ -670,15 +769,17 @@ export default function App() {
       {/* Minimal Top-Left Telemetry HUD */}
       <aside
         aria-label="Track telemetry"
-        className="pointer-events-none absolute top-4 left-4 z-10 w-72 rounded-lg border border-white/12 bg-zinc-950/82 px-4 py-3.5 text-zinc-100 shadow-lg"
+        className="pointer-events-none absolute top-4 left-4 z-10 w-80 rounded-lg border border-white/12 bg-zinc-950/82 px-4 py-3.5 text-zinc-100 shadow-lg"
       >
-        <div className="flex items-baseline justify-between border-b border-white/10 pb-2 mb-2.5">
+        <div className="flex items-baseline justify-between gap-2 border-b border-white/10 pb-2 mb-2.5">
           <h1 className="font-display text-sm font-semibold tracking-tight text-white">
             Salatiga 5km Workbench
           </h1>
-          <span className="font-telemetry text-xs font-medium text-amber-400">
-            {telemetry.fps} FPS
-          </span>
+          <div className="flex items-center gap-1.5 font-telemetry text-xs whitespace-nowrap">
+            <span className="font-medium text-amber-400">{telemetry.fps} FPS</span>
+            <span className="text-zinc-500">·</span>
+            <span className="text-zinc-300">{telemetry.drawCalls} calls</span>
+          </div>
         </div>
 
         <dl className="space-y-1.5 text-xs">
@@ -720,6 +821,232 @@ export default function App() {
         </dl>
       </aside>
 
+      {/* Right-Side Building Workbench Drawer (B key) */}
+      {workbenchOpen && selectedBuilding && (
+        <aside
+          aria-label="Building Workbench"
+          className="absolute top-4 right-4 z-20 w-80 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-lg border border-white/15 bg-zinc-950/90 p-4 text-xs text-zinc-100 shadow-2xl backdrop-blur-md"
+        >
+          <div className="flex items-center justify-between border-b border-white/10 pb-2.5 mb-3">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-amber-400" />
+              <h2 className="font-display text-sm font-semibold text-white">
+                Building Workbench
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setWorkbenchOpen(false)}
+              className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white cursor-pointer"
+              aria-label="Close Workbench"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-zinc-400 mb-1">Landmark</label>
+              <div className="flex gap-1.5">
+                <select
+                  value={selectedBuilding.id}
+                  onChange={(e) => setSelectedBuildingId(e.target.value)}
+                  className="flex-1 rounded border border-white/15 bg-zinc-900 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                >
+                  {customBuildings.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => focusBuildingRef.current?.(selectedBuilding)}
+                  title="Focus Orbit Camera on Landmark"
+                  className="inline-flex items-center gap-1 rounded border border-white/15 bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 text-xs text-white cursor-pointer shrink-0"
+                >
+                  <Eye className="w-3.5 h-3.5 text-amber-400" />
+                  Focus
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-zinc-400 mb-1">Signboard Name</label>
+              <input
+                type="text"
+                value={selectedBuilding.name}
+                onChange={(e) => updateSelectedBuilding({ name: e.target.value })}
+                className="w-full rounded border border-white/15 bg-zinc-900 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div>
+              <label className="block text-zinc-400 mb-1">Architectural Style</label>
+              <select
+                value={selectedBuilding.style}
+                onChange={(e) =>
+                  updateSelectedBuilding({
+                    style: e.target.value as SalatigaCustomBuilding['style'],
+                  })
+                }
+                className="w-full rounded border border-white/15 bg-zinc-900 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+              >
+                <option value="clock-roundabout">clock-roundabout</option>
+                <option value="colonial-civic">colonial-civic</option>
+                <option value="market-complex">market-complex</option>
+                <option value="shophouse-row">shophouse-row</option>
+                <option value="campus-gate">campus-gate</option>
+                <option value="highland-cafe">highland-cafe</option>
+                <option value="finish-gate">finish-gate</option>
+                <option value="grand-hotel">grand-hotel</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="flex justify-between text-zinc-400 mb-1">
+                  <span>Width</span>
+                  <span className="font-telemetry text-zinc-200">
+                    {selectedBuilding.widthMeters.toFixed(1)}m
+                  </span>
+                </label>
+                <input
+                  type="range"
+                  min={4}
+                  max={56}
+                  step={0.5}
+                  value={selectedBuilding.widthMeters}
+                  onChange={(e) =>
+                    updateSelectedBuilding({ widthMeters: parseFloat(e.target.value) })
+                  }
+                  className="w-full accent-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="flex justify-between text-zinc-400 mb-1">
+                  <span>Depth</span>
+                  <span className="font-telemetry text-zinc-200">
+                    {selectedBuilding.depthMeters.toFixed(1)}m
+                  </span>
+                </label>
+                <input
+                  type="range"
+                  min={4}
+                  max={40}
+                  step={0.5}
+                  value={selectedBuilding.depthMeters}
+                  onChange={(e) =>
+                    updateSelectedBuilding({ depthMeters: parseFloat(e.target.value) })
+                  }
+                  className="w-full accent-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="flex justify-between text-zinc-400 mb-1">
+                  <span>Floors</span>
+                  <span className="font-telemetry text-zinc-200">{selectedBuilding.floors}</span>
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={5}
+                  step={1}
+                  value={selectedBuilding.floors}
+                  onChange={(e) => updateSelectedBuilding({ floors: parseInt(e.target.value, 10) })}
+                  className="w-full accent-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="flex justify-between text-zinc-400 mb-1">
+                  <span>Compass</span>
+                  <span className="font-telemetry text-zinc-200">
+                    {Math.round(selectedBuilding.rotationDeg)}°
+                  </span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={360}
+                  step={1}
+                  value={selectedBuilding.rotationDeg}
+                  onChange={(e) =>
+                    updateSelectedBuilding({ rotationDeg: parseFloat(e.target.value) })
+                  }
+                  className="w-full accent-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-zinc-400 mb-1">Longitude</label>
+                <input
+                  type="number"
+                  step={0.00001}
+                  value={selectedBuilding.lon}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (Number.isFinite(val)) updateSelectedBuilding({ lon: val });
+                  }}
+                  className="w-full rounded border border-white/15 bg-zinc-900 px-2 py-1 font-telemetry text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+              <div>
+                <label className="block text-zinc-400 mb-1">Latitude</label>
+                <input
+                  type="number"
+                  step={0.00001}
+                  value={selectedBuilding.lat}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (Number.isFinite(val)) updateSelectedBuilding({ lat: val });
+                  }}
+                  className="w-full rounded border border-white/15 bg-zinc-900 px-2 py-1 font-telemetry text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-white/10 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="inline-flex flex-1 items-center justify-center gap-1.5 rounded border border-amber-400/40 bg-amber-500/15 hover:bg-amber-500/25 px-3 py-1.5 text-xs font-medium text-amber-300 cursor-pointer">
+                  <ImageUp className="w-3.5 h-3.5" />
+                  <span>Test Facade Skin</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFacadePhotoUpload}
+                    className="hidden"
+                  />
+                </label>
+                {selectedBuilding.facadeTextureUrl && (
+                  <button
+                    type="button"
+                    onClick={() => updateSelectedBuilding({ facadeTextureUrl: undefined })}
+                    className="rounded border border-white/15 bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1.5 text-xs text-zinc-300 cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleResetBuildings}
+                className="w-full rounded border border-white/10 bg-zinc-900 hover:bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 cursor-pointer"
+              >
+                Reset All Landmarks
+              </button>
+            </div>
+          </div>
+        </aside>
+      )}
+
       {/* Collapsible Bottom Control Dock */}
       <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center">
         <button
@@ -760,10 +1087,25 @@ export default function App() {
               <span>Reset to Track (R)</span>
             </button>
 
+            <button
+              type="button"
+              onClick={() => setWorkbenchOpen((prev) => !prev)}
+              className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                workbenchOpen
+                  ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
+                  : 'bg-zinc-800 hover:bg-zinc-700 border-white/10 text-white'
+              }`}
+            >
+              <Building2 className="w-3.5 h-3.5 text-amber-400" />
+              <span>Workbench (B)</span>
+            </button>
+
             <div className="hidden sm:flex items-center gap-2.5 pl-2 border-l border-white/10 text-xs text-zinc-400 whitespace-nowrap">
               <span>WASD / Arrows Drive</span>
               <span aria-hidden="true">·</span>
               <span>Shift Boost</span>
+              <span aria-hidden="true">·</span>
+              <span>B Workbench</span>
               <span aria-hidden="true">·</span>
               <span>C Camera</span>
               <span aria-hidden="true">·</span>
