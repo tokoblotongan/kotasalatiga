@@ -1,0 +1,6 @@
+{
+  "name": "Salatiga 3D City & Track Workbench",
+  "description": "Stage 1 ultra-lightweight 60 FPS 3D track and highland terrain workbench for the Salatiga 5km street circuit, plug-and-play compatible with F1cityrace.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
