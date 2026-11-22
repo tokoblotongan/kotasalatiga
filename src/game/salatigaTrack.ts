@@ -148,7 +148,7 @@ function createAsphaltTexture(): THREE.CanvasTexture {
     ctx.fillRect(px, py, 2, 2);
   }
 
-  // Subtle tire rubber wear tracks in both lanes
+  // Subtle tire rubber wear tracks in both lanes (edge/center lines rendered separately with junction feathering)
   const leftLane = ctx.createLinearGradient(width * 0.16, 0, width * 0.42, 0);
   leftLane.addColorStop(0, 'rgba(12,14,17,0)');
   leftLane.addColorStop(0.5, 'rgba(12,14,17,0.22)');
@@ -162,20 +162,6 @@ function createAsphaltTexture(): THREE.CanvasTexture {
   rightLane.addColorStop(1, 'rgba(12,14,17,0)');
   ctx.fillStyle = rightLane;
   ctx.fillRect(width * 0.58, 0, width * 0.26, height);
-
-  // Crisp solid white edge lines (inset ~0.35m from 14m edges -> ~2.5% of width)
-  ctx.fillStyle = '#e4e8ed';
-  const edgeWidth = 9;
-  const edgeInset = 12;
-  ctx.fillRect(edgeInset, 0, edgeWidth, height);
-  ctx.fillRect(width - edgeInset - edgeWidth, 0, edgeWidth, height);
-
-  // Crisp white dashed center line (2 dashes per tile)
-  const centerW = 8;
-  const centerX = (width - centerW) * 0.5;
-  ctx.fillStyle = '#eef2f6';
-  ctx.fillRect(centerX, 24, centerW, 112);
-  ctx.fillRect(centerX, 280, centerW, 112);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -461,6 +447,186 @@ function buildArmcoBarrierGeometry(
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indicesArr), 1));
   geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+/**
+ * Builds feathered solid white edge lines along cleared left/right track boundaries.
+ * Smoothly tapers vertex alpha at junction openings so asphalt merges without harsh white-line cross-cuts.
+ */
+function buildFeatheredEdgeLinesGeometry(
+  samples: TrackSample[],
+  roadHalf: number,
+  leftValidMask: boolean[],
+  rightValidMask: boolean[],
+  yBiasArray: Float32Array,
+): THREE.BufferGeometry {
+  const count = samples.length;
+  const lineWidth = 0.22;
+  const edgeInset = 0.36;
+  const fadeSamples = 3;
+
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const surfaceNormal = new THREE.Vector3();
+
+  const computeMaskAlpha = (mask: boolean[], idx: number, fadeAtTrackEnd: boolean): number => {
+    if (!mask[idx]) return 0;
+    let distToGap = 999;
+    for (let d = 1; d <= fadeSamples; d++) {
+      if (idx - d >= 0 && !mask[idx - d]) {
+        distToGap = Math.min(distToGap, d - 1);
+      }
+      if (idx + d < count && !mask[idx + d]) {
+        distToGap = Math.min(distToGap, d - 1);
+      }
+    }
+    if (fadeAtTrackEnd && idx >= count - 1 - fadeSamples) {
+      distToGap = Math.min(distToGap, count - 1 - idx);
+    }
+    if (distToGap >= fadeSamples) return 0.92;
+    return (distToGap / fadeSamples) * 0.92;
+  };
+
+  const emitSide = (
+    offsetInner: number,
+    offsetOuter: number,
+    mask: boolean[],
+    fadeAtTrackEnd: boolean,
+  ) => {
+    const baseVert = positions.length / 3;
+    const minOff = Math.min(offsetInner, offsetOuter);
+    const maxOff = Math.max(offsetInner, offsetOuter);
+
+    for (let i = 0; i < count; i++) {
+      const s = samples[i];
+      const y = s.position.y + 0.013 + yBiasArray[i];
+      const alpha = computeMaskAlpha(mask, i, fadeAtTrackEnd);
+
+      surfaceNormal.crossVectors(s.right, s.tangent).normalize();
+      if (surfaceNormal.y < 0) surfaceNormal.negate();
+
+      positions.push(
+        s.position.x + s.right.x * minOff,
+        y,
+        s.position.z + s.right.z * minOff,
+        s.position.x + s.right.x * maxOff,
+        y,
+        s.position.z + s.right.z * maxOff,
+      );
+      normals.push(
+        surfaceNormal.x,
+        surfaceNormal.y,
+        surfaceNormal.z,
+        surfaceNormal.x,
+        surfaceNormal.y,
+        surfaceNormal.z,
+      );
+      colors.push(0.91, 0.93, 0.95, alpha, 0.91, 0.93, 0.95, alpha);
+
+      if (i < count - 1 && mask[i] && mask[i + 1]) {
+        const a = baseVert + i * 2;
+        const b = a + 1;
+        const c = a + 2;
+        const d = a + 3;
+        indices.push(a, b, c, b, d, c);
+      }
+    }
+  };
+
+  emitSide(-(roadHalf - edgeInset - lineWidth), -(roadHalf - edgeInset), leftValidMask, true);
+  emitSide(roadHalf - edgeInset, roadHalf - edgeInset - lineWidth, rightValidMask, true);
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+/**
+ * Builds dashed centerline markings that smoothly feather out before road merges and junctions
+ * (such as the 4834m approach merge and Bundaran Tamansari roundabout).
+ */
+function buildFeatheredCenterDashGeometry(
+  samples: TrackSample[],
+  leftValidMask: boolean[],
+  rightValidMask: boolean[],
+  yBiasArray: Float32Array,
+  trackLengthMeters: number,
+): THREE.BufferGeometry {
+  const halfWidth = 0.13;
+  const dashPeriod = 12.0;
+  const dashLen = 5.2;
+  const fadeStartDist = 24.0;
+  const fadeEndDist = trackLengthMeters - 135.0; // Cleanly fade out before 4834m merge & roundabout
+
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const surfaceNormal = new THREE.Vector3();
+
+  for (let i = 0; i < samples.length - 1; i++) {
+    const s0 = samples[i];
+    const s1 = samples[i + 1];
+    const midS = (s0.distanceMeters + s1.distanceMeters) * 0.5;
+    if (midS < fadeStartDist || midS > fadeEndDist) continue;
+    if (!leftValidMask[i] || !rightValidMask[i] || !leftValidMask[i + 1] || !rightValidMask[i + 1]) {
+      continue;
+    }
+
+    const phase = midS % dashPeriod;
+    if (phase > dashLen) continue;
+
+    let alpha = 0.9;
+    if (midS < fadeStartDist + 14.0) {
+      alpha *= (midS - fadeStartDist) / 14.0;
+    }
+    if (midS > fadeEndDist - 16.0) {
+      alpha *= (fadeEndDist - midS) / 16.0;
+    }
+    alpha = Math.max(0, Math.min(0.9, alpha));
+    if (alpha <= 0.02) continue;
+
+    surfaceNormal.crossVectors(s0.right, s0.tangent).normalize();
+    if (surfaceNormal.y < 0) surfaceNormal.negate();
+
+    const y0 = s0.position.y + 0.013 + yBiasArray[i];
+    const y1 = s1.position.y + 0.013 + yBiasArray[i + 1];
+    const baseVert = positions.length / 3;
+
+    positions.push(
+      s0.position.x - s0.right.x * halfWidth,
+      y0,
+      s0.position.z - s0.right.z * halfWidth,
+      s0.position.x + s0.right.x * halfWidth,
+      y0,
+      s0.position.z + s0.right.z * halfWidth,
+      s1.position.x - s1.right.x * halfWidth,
+      y1,
+      s1.position.z - s1.right.z * halfWidth,
+      s1.position.x + s1.right.x * halfWidth,
+      y1,
+      s1.position.z + s1.right.z * halfWidth,
+    );
+    for (let v = 0; v < 4; v++) {
+      normals.push(surfaceNormal.x, surfaceNormal.y, surfaceNormal.z);
+      colors.push(0.94, 0.96, 0.98, alpha);
+    }
+    indices.push(baseVert, baseVert + 1, baseVert + 2, baseVert + 1, baseVert + 3, baseVert + 2);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4));
+  geometry.setIndex(indices);
   geometry.computeBoundingSphere();
   return geometry;
 }
@@ -907,55 +1073,178 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     throw new Error('Invalid Salatiga GeoJSON: missing features[0].geometry.coordinates');
   }
 
-  // Project exact [lon, lat, elev] GPS coordinates, then smooth sharp polygonal GPS kinks
-  // while pinning exact Start and End coordinates.
+  // Project exact [lon, lat, elev] GPS coordinates, prune GPS spikes/collinear micro-steps,
+  // and apply 2D circular arc filleting (R = 18m) to all corners sharper than 22 deg.
   const rawWorldPoints: THREE.Vector3[] = rawCoords.map(([lon, lat, elev]) =>
     gpsToWorld(lon, lat, elev ?? SALATIGA_TRACK_CONFIG.originElev),
   );
 
-  const cleanPoints: THREE.Vector3[] = [rawWorldPoints[0].clone()];
+  // 1. Deduplicate near-coincident GPS points (< 3.5m), pinning Start and End
+  const dedupPoints: THREE.Vector3[] = [rawWorldPoints[0].clone()];
   for (let i = 1; i < rawWorldPoints.length - 1; i++) {
-    if (rawWorldPoints[i].distanceTo(cleanPoints[cleanPoints.length - 1]) >= 4.0) {
-      cleanPoints.push(rawWorldPoints[i].clone());
+    if (rawWorldPoints[i].distanceTo(dedupPoints[dedupPoints.length - 1]) >= 3.5) {
+      dedupPoints.push(rawWorldPoints[i].clone());
     }
   }
-  cleanPoints.push(rawWorldPoints[rawWorldPoints.length - 1].clone());
+  dedupPoints.push(rawWorldPoints[rawWorldPoints.length - 1].clone());
 
-  // 2-iteration distance-clamped Chaikin corner cutting + 2-iteration moving-window spatial smoothing
-  let smoothedPoints = cleanPoints;
-  for (let iter = 0; iter < 2; iter++) {
-    if (smoothedPoints.length < 3) break;
-    const next: THREE.Vector3[] = [smoothedPoints[0].clone()];
-    for (let i = 0; i < smoothedPoints.length - 1; i++) {
-      const a = smoothedPoints[i];
-      const b = smoothedPoints[i + 1];
-      const segLen = Math.hypot(b.x - a.x, b.z - a.z);
-      if (segLen < 0.05) continue;
-      const cut = Math.min(segLen * 0.25, 8.5);
-      const t1 = cut / segLen;
-      const t2 = 1 - t1;
-      if (i > 0) next.push(a.clone().lerp(b, t1));
-      if (i < smoothedPoints.length - 2) next.push(a.clone().lerp(b, t2));
+  // 2. Remove 180-deg out-and-back GPS reversal spikes (2 passes)
+  let spikeCleaned = dedupPoints;
+  for (let pass = 0; pass < 2; pass++) {
+    const next: THREE.Vector3[] = [spikeCleaned[0].clone()];
+    for (let i = 1; i < spikeCleaned.length - 1; i++) {
+      const a = next[next.length - 1];
+      const b = spikeCleaned[i];
+      const c = spikeCleaned[i + 1];
+      const v1x = b.x - a.x;
+      const v1z = b.z - a.z;
+      const v2x = c.x - b.x;
+      const v2z = c.z - b.z;
+      const l1 = Math.hypot(v1x, v1z);
+      const l2 = Math.hypot(v2x, v2z);
+      if (l1 > 1e-3 && l2 > 1e-3) {
+        const dot = (v1x * v2x + v1z * v2z) / (l1 * l2);
+        if (dot < -0.766 && Math.min(l1, l2) < 20.0) {
+          continue;
+        }
+      }
+      next.push(b.clone());
     }
-    next.push(smoothedPoints[smoothedPoints.length - 1].clone());
-    smoothedPoints = next;
-  }
-  for (let iter = 0; iter < 2; iter++) {
-    if (smoothedPoints.length < 3) break;
-    const next = smoothedPoints.map((p) => p.clone());
-    for (let i = 1; i < smoothedPoints.length - 1; i++) {
-      next[i].x =
-        smoothedPoints[i - 1].x * 0.25 + smoothedPoints[i].x * 0.5 + smoothedPoints[i + 1].x * 0.25;
-      next[i].y =
-        smoothedPoints[i - 1].y * 0.25 + smoothedPoints[i].y * 0.5 + smoothedPoints[i + 1].y * 0.25;
-      next[i].z =
-        smoothedPoints[i - 1].z * 0.25 + smoothedPoints[i].z * 0.5 + smoothedPoints[i + 1].z * 0.25;
-    }
-    smoothedPoints = next;
+    next.push(spikeCleaned[spikeCleaned.length - 1].clone());
+    spikeCleaned = next;
   }
 
-  const trackCurve = new THREE.CatmullRomCurve3(smoothedPoints, false, 'centripetal');
-  trackCurve.arcLengthDivisions = 2400;
+  // 3. Simplify near-collinear GPS breadcrumbs (< 8 deg bend & < 0.8m offset) so fillets have full tangent room
+  const simplifiedPoints: THREE.Vector3[] = [spikeCleaned[0].clone()];
+  for (let i = 1; i < spikeCleaned.length - 1; i++) {
+    const a = simplifiedPoints[simplifiedPoints.length - 1];
+    const b = spikeCleaned[i];
+    const c = spikeCleaned[i + 1];
+    const v1x = b.x - a.x;
+    const v1z = b.z - a.z;
+    const v2x = c.x - b.x;
+    const v2z = c.z - b.z;
+    const l1 = Math.hypot(v1x, v1z);
+    const l2 = Math.hypot(v2x, v2z);
+    const lac = Math.hypot(c.x - a.x, c.z - a.z);
+    if (l1 > 1e-3 && l2 > 1e-3 && lac > 1e-3) {
+      const dot = THREE.MathUtils.clamp((v1x * v2x + v1z * v2z) / (l1 * l2), -1, 1);
+      const angDeg = (Math.acos(dot) * 180) / Math.PI;
+      const perp = Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x)) / lac;
+      if (angDeg < 8.0 && perp < 0.8) {
+        continue;
+      }
+    }
+    simplifiedPoints.push(b.clone());
+  }
+  simplifiedPoints.push(spikeCleaned[spikeCleaned.length - 1].clone());
+
+  // 4. 2D Circular Arc-Fillet Corner Rounding (R = 18m for turns > 22 deg, pinning Start and End)
+  const filletTargetRadius = 18.0;
+  const simpCount = simplifiedPoints.length;
+  const isFilletCorner = new Array<boolean>(simpCount).fill(false);
+  const cornerTurnRads = new Float64Array(simpCount);
+  const edgeLengths = new Float64Array(Math.max(1, simpCount - 1));
+
+  for (let i = 0; i < simpCount - 1; i++) {
+    edgeLengths[i] = Math.hypot(
+      simplifiedPoints[i + 1].x - simplifiedPoints[i].x,
+      simplifiedPoints[i + 1].z - simplifiedPoints[i].z,
+    );
+  }
+  for (let i = 1; i < simpCount - 1; i++) {
+    const a = simplifiedPoints[i - 1];
+    const b = simplifiedPoints[i];
+    const c = simplifiedPoints[i + 1];
+    const l1 = edgeLengths[i - 1];
+    const l2 = edgeLengths[i];
+    if (l1 < 1e-3 || l2 < 1e-3) continue;
+    const dot = THREE.MathUtils.clamp(
+      ((b.x - a.x) * (c.x - b.x) + (b.z - a.z) * (c.z - b.z)) / (l1 * l2),
+      -1,
+      1,
+    );
+    const turnRad = Math.acos(dot);
+    cornerTurnRads[i] = turnRad;
+    if ((turnRad * 180) / Math.PI > 22.0) {
+      isFilletCorner[i] = true;
+    }
+  }
+
+  const filletedPoints: THREE.Vector3[] = [simplifiedPoints[0].clone()];
+  for (let i = 1; i < simpCount - 1; i++) {
+    const a = simplifiedPoints[i - 1];
+    const b = simplifiedPoints[i];
+    const c = simplifiedPoints[i + 1];
+    if (!isFilletCorner[i]) {
+      filletedPoints.push(b.clone());
+      continue;
+    }
+
+    const l1 = edgeLengths[i - 1];
+    const l2 = edgeLengths[i];
+    const maxCut1 = isFilletCorner[i - 1] ? l1 * 0.45 : l1 * 0.85;
+    const maxCut2 = isFilletCorner[i + 1] ? l2 * 0.45 : l2 * 0.85;
+    const tanHalf = Math.tan(cornerTurnRads[i] * 0.5);
+    const tanDist = Math.min(filletTargetRadius * tanHalf, maxCut1, maxCut2);
+    const actualR = tanHalf > 1e-5 ? tanDist / tanHalf : filletTargetRadius;
+
+    const n1x = (b.x - a.x) / l1;
+    const n1z = (b.z - a.z) / l1;
+    const n2x = (c.x - b.x) / l2;
+    const n2z = (c.z - b.z) / l2;
+
+    const pStart = new THREE.Vector3(
+      b.x - n1x * tanDist,
+      b.y - (b.y - a.y) * (tanDist / l1),
+      b.z - n1z * tanDist,
+    );
+    const pEnd = new THREE.Vector3(
+      b.x + n2x * tanDist,
+      b.y + (c.y - b.y) * (tanDist / l2),
+      b.z + n2z * tanDist,
+    );
+
+    const cross = n1x * n2z - n1z * n2x;
+    const turnSign = cross >= 0 ? 1 : -1;
+    const inNormalX = -n1z * turnSign;
+    const inNormalZ = n1x * turnSign;
+    const centerX = pStart.x + inNormalX * actualR;
+    const centerZ = pStart.z + inNormalZ * actualR;
+
+    const startAng = Math.atan2(pStart.z - centerZ, pStart.x - centerX);
+    const endAng = Math.atan2(pEnd.z - centerZ, pEnd.x - centerX);
+    let deltaAng = endAng - startAng;
+    if (turnSign > 0 && deltaAng < 0) deltaAng += Math.PI * 2;
+    if (turnSign < 0 && deltaAng > 0) deltaAng -= Math.PI * 2;
+
+    const arcSteps = Math.max(4, Math.ceil((Math.abs(deltaAng) * actualR) / 2.5));
+    for (let step = 0; step <= arcSteps; step++) {
+      const frac = step / arcSteps;
+      const ang = startAng + deltaAng * frac;
+      filletedPoints.push(
+        new THREE.Vector3(
+          centerX + Math.cos(ang) * actualR,
+          THREE.MathUtils.lerp(pStart.y, pEnd.y, frac),
+          centerZ + Math.sin(ang) * actualR,
+        ),
+      );
+    }
+  }
+  filletedPoints.push(simplifiedPoints[simpCount - 1].clone());
+
+  // 5. Dense uniform 1.0m resampling along centripetal spline so corners sweep smoothly without chord kinks
+  const baseCurve = new THREE.CatmullRomCurve3(filletedPoints, false, 'centripetal');
+  baseCurve.arcLengthDivisions = 3000;
+  const baseLength = baseCurve.getLength();
+  const uniformSampleCount = Math.max(1000, Math.ceil(baseLength));
+  const uniformPoints: THREE.Vector3[] = [];
+  for (let i = 0; i <= uniformSampleCount; i++) {
+    uniformPoints.push(baseCurve.getPointAt(i / uniformSampleCount));
+  }
+
+  const trackCurve = new THREE.CatmullRomCurve3(uniformPoints, false, 'centripetal');
+  trackCurve.arcLengthDivisions = 3000;
   const trackLengthMeters = trackCurve.getLength();
 
   // Sample densely (~1 segment per 2 meters)
@@ -988,7 +1277,7 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     });
   }
 
-  // Pre-sample dense centerline points every 1.0m along trackCurve for universal clearance & anti-fold filter
+  // Pre-sample dense centerline points every 1.0m along trackCurve for cross-lane junction clearance
   const denseCount = Math.max(1000, Math.ceil(trackLengthMeters));
   const denseSampleX = new Float64Array(denseCount + 1);
   const denseSampleZ = new Float64Array(denseCount + 1);
@@ -1013,8 +1302,8 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     bucket.push(i);
   }
 
-  const clearanceDistSq = 7.8 * 7.8;
-  const minSplineSepMeters = 9.0;
+  const clearanceDistSq = 7.2 * 7.2;
+  const minSplineSepMeters = 35.0;
   const isPointInsideOtherLane = (vx: number, vz: number, sMeters: number): boolean => {
     const cx = Math.floor(vx / denseCellSize);
     const cz = Math.floor(vz / denseCellSize);
@@ -1036,9 +1325,8 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     return false;
   };
 
-  // Compute left & right kerb/barrier validity masks:
-  // 1) Discard inner kerb & barrier on tight inside apexes (turning radius R < 8.5m)
-  // 2) Discard any kerb (+/-7.6m) or barrier (+/-8.2m) within 7.8m of any centerline > 9.0m away
+  // Compute left & right kerb/barrier validity masks using ONLY true cross-lane overlap (> 35m spline sep)
+  // so every arc-filleted corner maintains 100% continuous unbroken inner and outer kerbs & guardrails.
   const { roadWidthMeters, kerbWidthMeters, barrierOffsetMeters } = SALATIGA_TRACK_CONFIG;
   const kerbCenterOffset = roadWidthMeters * 0.5 + kerbWidthMeters * 0.5; // 7.6m
   const leftValidMask: boolean[] = new Array(samples.length);
@@ -1046,57 +1334,28 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
 
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
-    let leftOk = true;
-    let rightOk = true;
 
-    const iPrev = Math.max(0, i - 1);
-    const iNext = Math.min(samples.length - 1, i + 1);
-    const ds = samples[iNext].distanceMeters - samples[iPrev].distanceMeters;
-    const hfPrev = samples[iPrev].horizForward;
-    const hfNext = samples[iNext].horizForward;
-    const dot = THREE.MathUtils.clamp(
-      hfPrev.x * hfNext.x + hfPrev.z * hfNext.z,
-      -1,
-      1,
-    );
-    const dTheta = Math.acos(dot);
-    const turnRadius = dTheta > 1e-4 ? ds / dTheta : 9999;
-    if (turnRadius < 8.5) {
-      const dHfx = hfNext.x - hfPrev.x;
-      const dHfz = hfNext.z - hfPrev.z;
-      const turnTowardRight = dHfx * s.right.x + dHfz * s.right.z;
-      if (turnTowardRight > 0) {
-        rightOk = false;
-      } else {
-        leftOk = false;
-      }
-    }
+    const lxKerb = s.position.x - s.right.x * kerbCenterOffset;
+    const lzKerb = s.position.z - s.right.z * kerbCenterOffset;
+    const lxBar = s.position.x - s.right.x * barrierOffsetMeters;
+    const lzBar = s.position.z - s.right.z * barrierOffsetMeters;
+    const leftOk =
+      !isPointInsideOtherLane(lxKerb, lzKerb, s.distanceMeters) &&
+      !isPointInsideOtherLane(lxBar, lzBar, s.distanceMeters);
 
-    if (leftOk) {
-      const lxKerb = s.position.x - s.right.x * kerbCenterOffset;
-      const lzKerb = s.position.z - s.right.z * kerbCenterOffset;
-      const lxBar = s.position.x - s.right.x * barrierOffsetMeters;
-      const lzBar = s.position.z - s.right.z * barrierOffsetMeters;
-      leftOk =
-        !isPointInsideOtherLane(lxKerb, lzKerb, s.distanceMeters) &&
-        !isPointInsideOtherLane(lxBar, lzBar, s.distanceMeters);
-    }
-
-    if (rightOk) {
-      const rxKerb = s.position.x + s.right.x * kerbCenterOffset;
-      const rzKerb = s.position.z + s.right.z * kerbCenterOffset;
-      const rxBar = s.position.x + s.right.x * barrierOffsetMeters;
-      const rzBar = s.position.z + s.right.z * barrierOffsetMeters;
-      rightOk =
-        !isPointInsideOtherLane(rxKerb, rzKerb, s.distanceMeters) &&
-        !isPointInsideOtherLane(rxBar, rzBar, s.distanceMeters);
-    }
+    const rxKerb = s.position.x + s.right.x * kerbCenterOffset;
+    const rzKerb = s.position.z + s.right.z * kerbCenterOffset;
+    const rxBar = s.position.x + s.right.x * barrierOffsetMeters;
+    const rzBar = s.position.z + s.right.z * barrierOffsetMeters;
+    const rightOk =
+      !isPointInsideOtherLane(rxKerb, rzKerb, s.distanceMeters) &&
+      !isPointInsideOtherLane(rxBar, rzBar, s.distanceMeters);
 
     leftValidMask[i] = leftOk;
     rightValidMask[i] = rightOk;
   }
 
-  // Purge short orphan barrier/kerb stubs (< 8.0m) so isolated fragments & end-posts never appear in junctions
+  // Purge short orphan barrier/kerb stubs (< 8.0m) so isolated fragments never appear inside junctions
   const purgeShortBarrierRuns = (mask: boolean[]) => {
     let idx = 0;
     while (idx < mask.length) {
@@ -1222,6 +1481,42 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
   roadMesh.receiveShadow = true;
   group.add(roadMesh);
 
+  // Feathered edge white lines & dashed center line (fade cleanly at junction merges)
+  const lineMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.72,
+    metalness: 0.04,
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  const edgeLinesGeo = buildFeatheredEdgeLinesGeometry(
+    samples,
+    roadHalf,
+    leftValidMask,
+    rightValidMask,
+    roadYBias,
+  );
+  const edgeLinesMesh = new THREE.Mesh(edgeLinesGeo, lineMat);
+  edgeLinesMesh.name = 'FeatheredEdgeLines';
+  edgeLinesMesh.receiveShadow = true;
+  group.add(edgeLinesMesh);
+
+  const centerDashGeo = buildFeatheredCenterDashGeometry(
+    samples,
+    leftValidMask,
+    rightValidMask,
+    roadYBias,
+    trackLengthMeters,
+  );
+  const centerLineMesh = new THREE.Mesh(centerDashGeo, lineMat);
+  centerLineMesh.name = 'FeatheredCenterDashes';
+  centerLineMesh.receiveShadow = true;
+  group.add(centerLineMesh);
+
   // 2. Alternating Red/White FIA Kerbs (1.2m wide along cleared edges only)
   const kerbTex = createKerbTexture();
   const kerbMat = new THREE.MeshStandardMaterial({
@@ -1328,7 +1623,7 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
         const off = -(barrierOffsetMeters + 0.04);
         endCapSpecs.push({
           x: s.position.x + s.right.x * off,
-          y: s.position.y + 0.38,
+          y: s.position.y + 0.56,
           z: s.position.z + s.right.z * off,
           yaw,
         });
@@ -1351,7 +1646,7 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
         const off = barrierOffsetMeters + 0.04;
         endCapSpecs.push({
           x: s.position.x + s.right.x * off,
-          y: s.position.y + 0.38,
+          y: s.position.y + 0.56,
           z: s.position.z + s.right.z * off,
           yaw,
         });
@@ -1382,13 +1677,13 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
   postInstanced.computeBoundingSphere();
   group.add(postInstanced);
 
-  // Clean terminal end-post caps where barriers terminate at junctions
+  // Sleek low-profile grey metallic terminals flush with the W-beam rail where barriers terminate
   if (endCapSpecs.length > 0) {
-    const capGeo = new THREE.BoxGeometry(0.22, 0.92, 0.28);
+    const capGeo = new THREE.BoxGeometry(0.11, 0.45, 0.16);
     const capMat = new THREE.MeshStandardMaterial({
-      color: 0xd97706,
-      metalness: 0.45,
-      roughness: 0.36,
+      color: 0xaeb8c2,
+      metalness: 0.78,
+      roughness: 0.34,
     });
     const endCapInstanced = new THREE.InstancedMesh(capGeo, capMat, endCapSpecs.length);
     endCapInstanced.castShadow = true;
