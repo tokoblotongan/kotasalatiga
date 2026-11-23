@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const SALATIGA_TRACK_CONFIG = {
   originLon: 110.504924,
@@ -121,75 +122,63 @@ export function worldToGps(
   return { lon, lat, elev };
 }
 
-function createAsphaltTexture(): THREE.CanvasTexture {
-  const width = 512;
+function createRoadSurfaceAtlasTexture(): THREE.CanvasTexture {
+  const width = 1024;
   const height = 512;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d')!;
 
-  // Base dark asphalt
+  // Base dark asphalt fill across left 74% (u: 0.00..0.74)
   ctx.fillStyle = '#23262b';
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(0, 0, Math.round(width * 0.74), height);
 
-  // Subtle aggregate grain (deterministic pseudo-random)
   let seed = 1337;
   const rand = () => {
     seed = (seed * 16807) % 2147483647;
     return (seed - 1) / 2147483646;
   };
 
-  for (let i = 0; i < 14000; i++) {
-    const px = rand() * width;
+  const asphaltW = Math.round(width * 0.72);
+  for (let i = 0; i < 16000; i++) {
+    const px = rand() * asphaltW;
     const py = rand() * height;
     const v = 26 + Math.floor(rand() * 24);
     ctx.fillStyle = `rgb(${v},${v + 2},${v + 5})`;
     ctx.fillRect(px, py, 2, 2);
   }
 
-  // Subtle tire rubber wear tracks in both lanes (edge/center lines rendered separately with junction feathering)
-  const leftLane = ctx.createLinearGradient(width * 0.16, 0, width * 0.42, 0);
+  // Subtle tire rubber wear tracks in both lanes
+  const leftLane = ctx.createLinearGradient(asphaltW * 0.16, 0, asphaltW * 0.42, 0);
   leftLane.addColorStop(0, 'rgba(12,14,17,0)');
   leftLane.addColorStop(0.5, 'rgba(12,14,17,0.22)');
   leftLane.addColorStop(1, 'rgba(12,14,17,0)');
   ctx.fillStyle = leftLane;
-  ctx.fillRect(width * 0.16, 0, width * 0.26, height);
+  ctx.fillRect(asphaltW * 0.16, 0, asphaltW * 0.26, height);
 
-  const rightLane = ctx.createLinearGradient(width * 0.58, 0, width * 0.84, 0);
+  const rightLane = ctx.createLinearGradient(asphaltW * 0.58, 0, asphaltW * 0.84, 0);
   rightLane.addColorStop(0, 'rgba(12,14,17,0)');
   rightLane.addColorStop(0.5, 'rgba(12,14,17,0.22)');
   rightLane.addColorStop(1, 'rgba(12,14,17,0)');
   ctx.fillStyle = rightLane;
-  ctx.fillRect(width * 0.58, 0, width * 0.26, height);
+  ctx.fillRect(asphaltW * 0.58, 0, asphaltW * 0.26, height);
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.ClampToEdgeWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.anisotropy = 16;
-  texture.needsUpdate = true;
-  return texture;
-}
-
-function createKerbTexture(): THREE.CanvasTexture {
-  const width = 64;
-  const height = 256;
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d')!;
-
-  // Alternating FIA red & white blocks
+  // Middle band (u: 0.74..0.92): Alternating FIA red & white kerb blocks
+  const kerbX = Math.round(width * 0.74);
+  const kerbW = Math.round(width * 0.18);
   ctx.fillStyle = '#d92626';
-  ctx.fillRect(0, 0, width, height / 2);
+  ctx.fillRect(kerbX, 0, kerbW, height / 2);
   ctx.fillStyle = '#f4f4f6';
-  ctx.fillRect(0, height / 2, width, height / 2);
-
-  // Subtle concrete seam shading
+  ctx.fillRect(kerbX, height / 2, kerbW, height / 2);
   ctx.fillStyle = 'rgba(0,0,0,0.12)';
-  ctx.fillRect(0, 0, 4, height);
-  ctx.fillRect(0, height / 2 - 2, width, 3);
+  ctx.fillRect(kerbX, 0, 4, height);
+  ctx.fillRect(kerbX, height / 2 - 2, kerbW, 3);
+
+  // Right band (u: 0.92..1.00): Dark concrete shoulder apron
+  const shX = Math.round(width * 0.92);
+  ctx.fillStyle = '#3b4046';
+  ctx.fillRect(shX, 0, width - shX, height);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -200,63 +189,48 @@ function createKerbTexture(): THREE.CanvasTexture {
   return texture;
 }
 
-function createCheckeredTexture(): THREE.CanvasTexture {
-  const width = 512;
-  const height = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d')!;
-
-  const cols = 16;
-  const rows = 4;
-  const cw = width / cols;
-  const ch = height / rows;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      ctx.fillStyle = (r + c) % 2 === 0 ? '#f4f4f5' : '#18181b';
-      ctx.fillRect(c * cw, r * ch, cw, ch);
-    }
-  }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 16;
-  texture.needsUpdate = true;
-  return texture;
-}
-
-function createGantryBannerTexture(): THREE.CanvasTexture {
+function createGantryAtlasTexture(): THREE.CanvasTexture {
   const width = 1024;
-  const height = 160;
+  const height = 320;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d')!;
 
+  // Top half (y: 0..160 -> v: 0.5..1.0): Start/Finish gantry banner
+  const halfH = height / 2;
   ctx.fillStyle = '#12151c';
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(0, 0, width, halfH);
 
-  // Checkered left & right flanks
   const sq = 20;
-  for (let r = 0; r < height / sq; r++) {
+  for (let r = 0; r < halfH / sq; r++) {
     for (let c = 0; c < 6; c++) {
       ctx.fillStyle = (r + c) % 2 === 0 ? '#f4f4f5' : '#18181b';
       ctx.fillRect(c * sq, r * sq, sq, sq);
       ctx.fillRect(width - (c + 1) * sq, r * sq, sq, sq);
     }
   }
-
-  // Crimson racing stripe accent
   ctx.fillStyle = '#dc2626';
   ctx.fillRect(120, 0, width - 240, 12);
-  ctx.fillRect(120, height - 12, width - 240, 12);
+  ctx.fillRect(120, halfH - 12, width - 240, 12);
 
   ctx.fillStyle = '#f8fafc';
   ctx.font = '700 48px "Oxanium", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('SALATIGA · TAMANSARI 5KM', width / 2, height / 2 + 2);
+  ctx.fillText('SALATIGA · TAMANSARI 5KM', width / 2, halfH / 2 + 2);
+
+  // Bottom half (y: 160..320 -> v: 0.0..0.5): Checkered start/finish asphalt line
+  const cols = 16;
+  const rows = 4;
+  const cw = width / cols;
+  const ch = halfH / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#f4f4f5' : '#18181b';
+      ctx.fillRect(c * cw, halfH + r * ch, cw, ch);
+    }
+  }
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -317,6 +291,8 @@ function buildHorizontalRibbonGeometry(
   uvTileLengthMeters: number,
   validMask?: boolean[],
   yBiasArray?: Float32Array,
+  uMin = 0,
+  uMax = 1,
 ): THREE.BufferGeometry {
   const count = samples.length;
   const positions = new Float32Array(count * 2 * 3);
@@ -362,9 +338,9 @@ function buildHorizontalRibbonGeometry(
     normals[(vi + 1) * 3 + 1] = surfaceNormal.y;
     normals[(vi + 1) * 3 + 2] = surfaceNormal.z;
 
-    uvs[vi * 2] = 0;
+    uvs[vi * 2] = uMin;
     uvs[vi * 2 + 1] = v;
-    uvs[(vi + 1) * 2] = 1;
+    uvs[(vi + 1) * 2] = uMax;
     uvs[(vi + 1) * 2 + 1] = v;
 
     if (i < count - 1) {
@@ -631,6 +607,53 @@ function buildFeatheredCenterDashGeometry(
   return geometry;
 }
 
+function stampVertexColorAndTransform(
+  geo: THREE.BufferGeometry,
+  hex: string,
+  px = 0,
+  py = 0,
+  pz = 0,
+  ry = 0,
+  rz = 0,
+): THREE.BufferGeometry {
+  if (px !== 0 || py !== 0 || pz !== 0 || ry !== 0 || rz !== 0) {
+    const m = new THREE.Matrix4().compose(
+      new THREE.Vector3(px, py, pz),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, rz, 'XYZ')),
+      new THREE.Vector3(1, 1, 1),
+    );
+    geo.applyMatrix4(m);
+  }
+  if (geo.attributes.uv) geo.deleteAttribute('uv');
+  const count = geo.attributes.position.count;
+  const cols = new Float32Array(count * 3);
+  const c = new THREE.Color(hex);
+  for (let i = 0; i < count; i++) {
+    cols[i * 3] = c.r;
+    cols[i * 3 + 1] = c.g;
+    cols[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+  return geo;
+}
+
+function remapUvSubRect(
+  geo: THREE.BufferGeometry,
+  u0: number,
+  v0: number,
+  u1: number,
+  v1: number,
+): THREE.BufferGeometry {
+  const uv = geo.attributes.uv as THREE.BufferAttribute;
+  const du = u1 - u0;
+  const dv = v1 - v0;
+  for (let i = 0; i < uv.count; i++) {
+    uv.setXY(i, u0 + uv.getX(i) * du, v0 + uv.getY(i) * dv);
+  }
+  uv.needsUpdate = true;
+  return geo;
+}
+
 function buildStartFinishGantry(sample0: TrackSample): THREE.Group {
   const gantry = new THREE.Group();
   gantry.name = 'StartFinishGantry';
@@ -645,102 +668,59 @@ function buildStartFinishGantry(sample0: TrackSample): THREE.Group {
   gantry.position.copy(sample0.position);
   gantry.quaternion.setFromRotationMatrix(basis);
 
-  const steelMat = new THREE.MeshStandardMaterial({
-    color: 0x222730,
-    metalness: 0.78,
-    roughness: 0.34,
-  });
-  const footingMat = new THREE.MeshStandardMaterial({
-    color: 0x6b7280,
-    metalness: 0.1,
-    roughness: 0.85,
-  });
-
-  // 1-2. Cantilevered East-side footing & reinforced twin-column steel tower (+9.2m = outer clear side)
-  // Leaving West side (-9.2m) 100% open so the Bundaran Tamansari roundabout asphalt has zero obstruction.
-  const stanchionGeo = new THREE.BoxGeometry(0.56, 6.4, 0.72);
-  const footingGeo = new THREE.BoxGeometry(1.4, 1.0, 1.6);
   const xOuter = 9.2;
-  const footing = new THREE.Mesh(footingGeo, footingMat);
-  footing.position.set(xOuter, 0.1, 0);
-  footing.castShadow = true;
-  footing.receiveShadow = true;
-  gantry.add(footing);
-
-  const tower = new THREE.Mesh(stanchionGeo, steelMat);
-  tower.position.set(xOuter, 3.2, 0);
-  tower.castShadow = true;
-  tower.receiveShadow = true;
-  gantry.add(tower);
-
-  // Diagonal knee brace supporting cantilevered bridge from East tower
-  const braceGeo = new THREE.BoxGeometry(0.28, 4.6, 0.34);
-  const brace = new THREE.Mesh(braceGeo, steelMat);
-  brace.position.set(xOuter - 1.55, 4.45, 0);
-  brace.rotation.z = -0.68;
-  brace.castShadow = true;
-  gantry.add(brace);
-
-  // 3. Overhead cantilevered truss bridge spanning across start straight (-7.6m to +9.48m)
-  const bridgeGeo = new THREE.BoxGeometry(17.1, 0.55, 0.7);
-  const bridge = new THREE.Mesh(bridgeGeo, steelMat);
-  bridge.position.set(0.95, 6.1, 0);
-  bridge.castShadow = true;
-  bridge.receiveShadow = true;
-  gantry.add(bridge);
-
-  // 4. Dual-sided Start/Finish signage banner
-  const bannerTex = createGantryBannerTexture();
-  const bannerMat = new THREE.MeshStandardMaterial({
-    map: bannerTex,
-    roughness: 0.42,
-    metalness: 0.18,
-  });
-  const bannerGeo = new THREE.BoxGeometry(15.2, 1.35, 0.18);
-  const banner = new THREE.Mesh(bannerGeo, bannerMat);
-  banner.position.set(0, 5.45, 0);
-  banner.castShadow = true;
-  gantry.add(banner);
-
-  // 5. FIA 5-pod start light gantry bar
-  const lightBoxGeo = new THREE.BoxGeometry(3.4, 0.44, 0.28);
-  const lightBox = new THREE.Mesh(lightBoxGeo, steelMat);
-  lightBox.position.set(0, 4.45, 0.18);
-  lightBox.castShadow = true;
-  gantry.add(lightBox);
-
-  const lensGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.08, 12);
-  lensGeo.rotateX(Math.PI / 2);
-  const lensMat = new THREE.MeshStandardMaterial({
-    color: 0xdc2626,
-    emissive: 0x991b1b,
-    emissiveIntensity: 1.4,
-    roughness: 0.2,
-    metalness: 0.1,
-  });
+  const structureParts: THREE.BufferGeometry[] = [
+    stampVertexColorAndTransform(new THREE.BoxGeometry(1.4, 1.0, 1.6), '#6b7280', xOuter, 0.1, 0),
+    stampVertexColorAndTransform(new THREE.BoxGeometry(0.56, 6.4, 0.72), '#222730', xOuter, 3.2, 0),
+    stampVertexColorAndTransform(new THREE.BoxGeometry(0.28, 4.6, 0.34), '#222730', xOuter - 1.55, 4.45, 0, 0, -0.68),
+    stampVertexColorAndTransform(new THREE.BoxGeometry(17.1, 0.55, 0.7), '#222730', 0.95, 6.1, 0),
+    stampVertexColorAndTransform(new THREE.BoxGeometry(3.4, 0.44, 0.28), '#222730', 0, 4.45, 0.18),
+  ];
   for (let i = 0; i < 5; i++) {
-    const lx = (i - 2) * 0.62;
-    const lens = new THREE.Mesh(lensGeo, lensMat);
-    lens.position.set(lx, 4.45, 0.34);
-    gantry.add(lens);
+    const lensGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.08, 12);
+    lensGeo.rotateX(Math.PI / 2);
+    structureParts.push(
+      stampVertexColorAndTransform(lensGeo, '#ef4444', (i - 2) * 0.62, 4.45, 0.34),
+    );
   }
+  const mergedStructure = mergeGeometries(structureParts, false)!;
+  structureParts.forEach((g) => g.dispose());
 
-  // 6. Checkered Start/Finish asphalt stripe flush on road (offset above +0.014m start asphalt bias)
-  const checkTex = createCheckeredTexture();
-  const checkMat = new THREE.MeshStandardMaterial({
-    map: checkTex,
-    roughness: 0.75,
-    metalness: 0.04,
+  const structureMat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    metalness: 0.68,
+    roughness: 0.38,
+  });
+  const structureMesh = new THREE.Mesh(mergedStructure, structureMat);
+  structureMesh.castShadow = true;
+  structureMesh.receiveShadow = true;
+  gantry.add(structureMesh);
+
+  // Merge dual-sided gantry banner + checkered finish line using 1 combined atlas texture (1 draw call)
+  const gantryTex = createGantryAtlasTexture();
+  const gantrySignMat = new THREE.MeshStandardMaterial({
+    map: gantryTex,
+    roughness: 0.55,
+    metalness: 0.12,
     polygonOffset: true,
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -2,
   });
-  const lineGeo = new THREE.PlaneGeometry(13.2, 1.8);
+
+  const bannerGeo = remapUvSubRect(new THREE.BoxGeometry(15.2, 1.35, 0.18), 0.01, 0.52, 0.99, 0.99);
+  bannerGeo.translate(0, 5.45, 0);
+
+  const lineGeo = remapUvSubRect(new THREE.PlaneGeometry(13.2, 1.8), 0.01, 0.01, 0.99, 0.48);
   lineGeo.rotateX(-Math.PI / 2);
-  const startLine = new THREE.Mesh(lineGeo, checkMat);
-  startLine.position.set(0, 0.04, 0);
-  startLine.receiveShadow = true;
-  gantry.add(startLine);
+  lineGeo.translate(0, 0.04, 0);
+
+  const mergedSignGeo = mergeGeometries([bannerGeo, lineGeo], false)!;
+  bannerGeo.dispose();
+  lineGeo.dispose();
+
+  const gantrySignMesh = new THREE.Mesh(mergedSignGeo, gantrySignMat);
+  gantrySignMesh.receiveShadow = true;
+  gantry.add(gantrySignMesh);
 
   return gantry;
 }
@@ -783,12 +763,17 @@ function buildHighlandTerrain(
   const checkedStamp = new Int32Array(numSegs);
   let stampId = 1;
 
-  function queryNearestTrack(vx: number, vz: number): { dist: number; roadY: number } {
+  function queryNearestTrack(
+    vx: number,
+    vz: number,
+  ): { dist: number; roadY: number; s: number; lateralOffset: number } {
     const cx = Math.floor(vx / cellSize);
     const cz = Math.floor(vz / cellSize);
     const radiusCells = 4; // +/-128m coverage (comfortably covers 95m slope zone)
     let bestDistSq = Infinity;
     let bestY = 0;
+    let bestS = 0;
+    let bestLat = 0;
     stampId++;
 
     for (let dxCell = -radiusCells; dxCell <= radiusCells; dxCell++) {
@@ -817,6 +802,9 @@ function buildHighlandTerrain(
           if (dSq < bestDistSq) {
             bestDistSq = dSq;
             bestY = a.y + (b.y - a.y) * t;
+            bestS = THREE.MathUtils.lerp(samples[segIdx].distanceMeters, samples[segIdx + 1].distanceMeters, t);
+            const r = samples[segIdx].right;
+            bestLat = (vx - projX) * r.x + (vz - projZ) * r.z;
           }
         }
       }
@@ -825,6 +813,8 @@ function buildHighlandTerrain(
     return {
       dist: bestDistSq < Infinity ? Math.sqrt(bestDistSq) : Infinity,
       roadY: bestY,
+      s: bestS,
+      lateralOffset: bestLat,
     };
   }
 
@@ -854,6 +844,7 @@ function buildHighlandTerrain(
   const posAttr = innerGeo.attributes.position as THREE.BufferAttribute;
   const colors = new Float32Array(posAttr.count * 3);
   const cRoadShoulder = new THREE.Color('#4a7239');
+  const cUrbanConcrete = new THREE.Color('#5a5f66');
   const cMidGrass = new THREE.Color('#3c6831');
   const cOuterHighland = new THREE.Color('#2f5528');
   const tmpColor = new THREE.Color();
@@ -862,18 +853,30 @@ function buildHighlandTerrain(
     const vx = posAttr.getX(i);
     const vz = posAttr.getZ(i);
 
-    const { dist, roadY } = queryNearestTrack(vx, vz);
+    const { dist, roadY, s, lateralOffset } = queryNearestTrack(vx, vz);
 
     // Gentle Javanese highland undulation
     const hillWave =
       Math.sin(vx * 0.011 + 0.4) * Math.cos(vz * 0.013 - 0.2) * 3.8 +
       Math.sin((vx + vz) * 0.023) * 1.4;
 
+    // Urban commercial corridor along Jl. Jend. Sudirman east side (s = 50..430m, lateralOffset < 0)
+    const inEastUrbanPad = s >= 50.0 && s <= 430.0 && lateralOffset < 0;
+
     let vy: number;
     if (dist <= 11.0) {
       // Strictly clamped at least 0.35m below road elevation inside road + barrier corridor
       vy = roadY - 0.35;
       tmpColor.copy(cRoadShoulder);
+    } else if (inEastUrbanPad && dist <= 58.0) {
+      // Flattened urban sidewalk & market plaza pad strictly below road/apron elevation (eliminates green hill gaps)
+      vy = roadY - 0.35;
+      tmpColor.copy(cUrbanConcrete);
+    } else if (inEastUrbanPad && dist <= 80.0) {
+      const blend = smoothstep(58.0, 80.0, dist);
+      const targetValley = THREE.MathUtils.lerp(roadY - 0.3, -2.8, blend);
+      vy = targetValley + hillWave * 0.2 * blend;
+      tmpColor.copy(cUrbanConcrete).lerp(cOuterHighland, blend);
     } else if (dist <= 15.0) {
       // Buffer zone: still strictly clamped <= roadY - 0.20m to prevent any diagonal triangle clipping
       const blend = smoothstep(11.0, 15.0, dist);
@@ -915,18 +918,19 @@ function buildHighlandTerrain(
   innerTerrain.castShadow = false;
   terrainGroup.add(innerTerrain);
 
-  // Seamless outer horizon valley skirt so outdoor terrain extends into horizon fog without floating void edges
+  // Merge outer horizon valley skirt + Mount Merbabu massif into 1 draw call
   const outerSize = 18000;
   const outerGeo = new THREE.PlaneGeometry(outerSize, outerSize, 96, 96);
   outerGeo.rotateX(-Math.PI / 2);
   outerGeo.translate((x0 + x1) * 0.5, 0, (z0 + z1) * 0.5);
   const outerPos = outerGeo.attributes.position as THREE.BufferAttribute;
+  const outerCols = new Float32Array(outerPos.count * 3);
+  const cSkirt = new THREE.Color(0x335a2b);
   for (let i = 0; i < outerPos.count; i++) {
     const vx = outerPos.getX(i);
     const vz = outerPos.getZ(i);
     const insideInner = vx >= x0 + 25 && vx <= x1 - 25 && vz >= z0 + 25 && vz <= z1 - 25;
     if (insideInner) {
-      // Depress strictly beneath inner terrain footprint so there is zero overlap/clipping
       outerPos.setY(i, -24);
     } else {
       const distFromBox = Math.hypot(
@@ -939,108 +943,63 @@ function buildHighlandTerrain(
           (Math.sin(vx * 0.0018) * Math.cos(vz * 0.0016) * 14);
       outerPos.setY(i, gentleOuter);
     }
+    outerCols[i * 3] = cSkirt.r;
+    outerCols[i * 3 + 1] = cSkirt.g;
+    outerCols[i * 3 + 2] = cSkirt.b;
   }
+  outerGeo.setAttribute('color', new THREE.BufferAttribute(outerCols, 3));
   outerGeo.computeVertexNormals();
-  const outerMat = new THREE.MeshStandardMaterial({
-    color: 0x335a2b,
-    roughness: 0.95,
-    metalness: 0.0,
-  });
-  const outerSkirt = new THREE.Mesh(outerGeo, outerMat);
-  outerSkirt.receiveShadow = false;
-  terrainGroup.add(outerSkirt);
+  if (outerGeo.attributes.uv) outerGeo.deleteAttribute('uv');
 
-  return terrainGroup;
-}
-
-/**
- * Builds stylized Mount Merbabu volcanic massif backdrop strictly > 3,200m from route perimeter.
- */
-function buildMountMerbabuBackdrop(
-  minX: number,
-  maxX: number,
-  maxZ: number,
-): THREE.Group {
-  const merbabuGroup = new THREE.Group();
-  merbabuGroup.name = 'MountMerbabuBackdrop';
-
-  // Position Mount Merbabu South-Southwest of Salatiga, with base radius 1,450m
-  // and center at maxZ + 4,950m => closest skirt edge is > 3,450m from route perimeter (> 3,200m).
-  const centerX = (minX + maxX) * 0.5 - 950;
-  const centerZ = maxZ + 4950;
-  merbabuGroup.position.set(centerX, -4, centerZ);
-
+  const merbabuCenterX = (minX + maxX) * 0.5 - 950;
+  const merbabuCenterZ = maxZ + 4950;
   const radialSegs = 72;
   const heightSegs = 28;
   const baseRadius = 1450;
   const peakHeight = 1480;
 
-  const geo = new THREE.ConeGeometry(baseRadius, peakHeight, radialSegs, heightSegs, true);
-  geo.translate(0, peakHeight * 0.5, 0);
-
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  const colors = new Float32Array(pos.count * 3);
+  const mainConeGeo = new THREE.ConeGeometry(baseRadius, peakHeight, radialSegs, heightSegs, true);
+  mainConeGeo.translate(0, peakHeight * 0.5, 0);
+  const mPos = mainConeGeo.attributes.position as THREE.BufferAttribute;
+  const mCols = new Float32Array(mPos.count * 3);
   const cBase = new THREE.Color('#2d522a');
   const cMid = new THREE.Color('#3f5b3a');
   const cUpper = new THREE.Color('#5a6772');
   const cPeak = new THREE.Color('#7a8793');
   const tmp = new THREE.Color();
 
-  for (let i = 0; i < pos.count; i++) {
-    let x = pos.getX(i);
-    let y = pos.getY(i);
-    let z = pos.getZ(i);
-
+  for (let i = 0; i < mPos.count; i++) {
+    let x = mPos.getX(i);
+    let y = mPos.getY(i);
+    let z = mPos.getZ(i);
     const hNorm = Math.max(0, Math.min(1, y / peakHeight));
     const angle = Math.atan2(z, x);
-
-    // Sculpt volcanic radial ridges & gullies + classic Merbabu twin-summit saddle profile
     const ridge1 = Math.sin(angle * 7.0 + 0.6) * 0.14;
     const ridge2 = Math.cos(angle * 13.0 - 1.1) * 0.06;
     const radialScale = 1.0 + (ridge1 + ridge2) * (1.0 - hNorm * 0.65);
-
     x *= radialScale;
     z *= radialScale;
-
-    // Soften summit into an asymmetric volcanic caldera rim
     if (hNorm > 0.86) {
       const craterBlend = (hNorm - 0.86) / 0.14;
       const saddleDip = Math.cos(angle * 2.0 + 0.4) * 55 * craterBlend;
       y -= craterBlend * 48 + saddleDip;
     }
-
-    // Concave volcanic stratovolcano profile
     const curveDrop = Math.sin(hNorm * Math.PI) * 75;
     y = Math.max(0, y - curveDrop * 0.45);
+    mPos.setXYZ(i, x, y, z);
 
-    pos.setXYZ(i, x, y, z);
-
-    if (hNorm < 0.35) {
-      tmp.copy(cBase).lerp(cMid, hNorm / 0.35);
-    } else if (hNorm < 0.72) {
-      tmp.copy(cMid).lerp(cUpper, (hNorm - 0.35) / 0.37);
-    } else {
-      tmp.copy(cUpper).lerp(cPeak, (hNorm - 0.72) / 0.28);
-    }
-    colors[i * 3] = tmp.r;
-    colors[i * 3 + 1] = tmp.g;
-    colors[i * 3 + 2] = tmp.b;
+    if (hNorm < 0.35) tmp.copy(cBase).lerp(cMid, hNorm / 0.35);
+    else if (hNorm < 0.72) tmp.copy(cMid).lerp(cUpper, (hNorm - 0.35) / 0.37);
+    else tmp.copy(cUpper).lerp(cPeak, (hNorm - 0.72) / 0.28);
+    mCols[i * 3] = tmp.r;
+    mCols[i * 3 + 1] = tmp.g;
+    mCols[i * 3 + 2] = tmp.b;
   }
+  mainConeGeo.setAttribute('color', new THREE.BufferAttribute(mCols, 3));
+  mainConeGeo.computeVertexNormals();
+  mainConeGeo.translate(merbabuCenterX, -4, merbabuCenterZ);
+  if (mainConeGeo.attributes.uv) mainConeGeo.deleteAttribute('uv');
 
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
-
-  const mat = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 0.94,
-    metalness: 0.02,
-    flatShading: false,
-  });
-
-  const mainCone = new THREE.Mesh(geo, mat);
-  merbabuGroup.add(mainCone);
-
-  // Flanking western foothill ridge (also strictly > 3,200m from route)
   const ridgeGeo = new THREE.ConeGeometry(920, 840, 48, 16, true);
   ridgeGeo.translate(-1150, 410, 420);
   const rPos = ridgeGeo.attributes.position as THREE.BufferAttribute;
@@ -1061,9 +1020,26 @@ function buildMountMerbabuBackdrop(
   }
   ridgeGeo.setAttribute('color', new THREE.BufferAttribute(rCols, 3));
   ridgeGeo.computeVertexNormals();
-  merbabuGroup.add(new THREE.Mesh(ridgeGeo, mat));
+  ridgeGeo.translate(merbabuCenterX, -4, merbabuCenterZ);
+  if (ridgeGeo.attributes.uv) ridgeGeo.deleteAttribute('uv');
 
-  return merbabuGroup;
+  const horizonMergedGeo = mergeGeometries([outerGeo, mainConeGeo, ridgeGeo], false)!;
+  outerGeo.dispose();
+  mainConeGeo.dispose();
+  ridgeGeo.dispose();
+
+  const horizonMat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.94,
+    metalness: 0.01,
+  });
+  const horizonMesh = new THREE.Mesh(horizonMergedGeo, horizonMat);
+  horizonMesh.name = 'HorizonAndMountMerbabu';
+  horizonMesh.receiveShadow = false;
+  horizonMesh.castShadow = false;
+  terrainGroup.add(horizonMesh);
+
+  return terrainGroup;
 }
 
 export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrackBuildResult {
@@ -1456,11 +1432,11 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
 
   const roadHalf = roadWidthMeters * 0.5;
 
-  // 1. Dark Textured Asphalt Ribbon (14m wide) with polygonOffset + junction overlap separation
-  const asphaltTex = createAsphaltTexture();
-  const asphaltMat = new THREE.MeshStandardMaterial({
-    map: asphaltTex,
-    roughness: 0.78,
+  // 1. Merged Dark Asphalt + Red/White FIA Kerbs + Concrete Shoulders (1 draw call)
+  const roadAtlasTex = createRoadSurfaceAtlasTexture();
+  const roadAtlasMat = new THREE.MeshStandardMaterial({
+    map: roadAtlasTex,
+    roughness: 0.76,
     metalness: 0.05,
     polygonOffset: true,
     polygonOffsetFactor: -1,
@@ -1475,13 +1451,73 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     16,
     undefined,
     roadYBias,
+    0.02,
+    0.68,
   );
-  const roadMesh = new THREE.Mesh(roadGeo, asphaltMat);
-  roadMesh.name = 'AsphaltRoad';
+  const leftKerbGeo = buildHorizontalRibbonGeometry(
+    samples,
+    -(roadHalf + kerbWidthMeters),
+    -roadHalf,
+    0.04,
+    0.012,
+    2.4,
+    leftValidMask,
+    roadYBias,
+    0.76,
+    0.88,
+  );
+  const rightKerbGeo = buildHorizontalRibbonGeometry(
+    samples,
+    roadHalf,
+    roadHalf + kerbWidthMeters,
+    0.012,
+    0.04,
+    2.4,
+    rightValidMask,
+    roadYBias,
+    0.76,
+    0.88,
+  );
+  const leftShoulderGeo = buildHorizontalRibbonGeometry(
+    samples,
+    -(roadHalf + kerbWidthMeters + 0.5),
+    -(roadHalf + kerbWidthMeters),
+    -0.38,
+    0.04,
+    8,
+    leftValidMask,
+    undefined,
+    0.94,
+    0.98,
+  );
+  const rightShoulderGeo = buildHorizontalRibbonGeometry(
+    samples,
+    roadHalf + kerbWidthMeters,
+    roadHalf + kerbWidthMeters + 0.5,
+    0.04,
+    -0.38,
+    8,
+    rightValidMask,
+    undefined,
+    0.94,
+    0.98,
+  );
+  const mergedRoadGeo = mergeGeometries(
+    [roadGeo, leftKerbGeo, rightKerbGeo, leftShoulderGeo, rightShoulderGeo],
+    false,
+  )!;
+  roadGeo.dispose();
+  leftKerbGeo.dispose();
+  rightKerbGeo.dispose();
+  leftShoulderGeo.dispose();
+  rightShoulderGeo.dispose();
+
+  const roadMesh = new THREE.Mesh(mergedRoadGeo, roadAtlasMat);
+  roadMesh.name = 'AsphaltKerbsShoulders';
   roadMesh.receiveShadow = true;
   group.add(roadMesh);
 
-  // Feathered edge white lines & dashed center line (fade cleanly at junction merges)
+  // 2. Feathered edge white lines & dashed center line merged into 1 draw call
   const lineMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 0.72,
@@ -1500,11 +1536,6 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     rightValidMask,
     roadYBias,
   );
-  const edgeLinesMesh = new THREE.Mesh(edgeLinesGeo, lineMat);
-  edgeLinesMesh.name = 'FeatheredEdgeLines';
-  edgeLinesMesh.receiveShadow = true;
-  group.add(edgeLinesMesh);
-
   const centerDashGeo = buildFeatheredCenterDashGeometry(
     samples,
     leftValidMask,
@@ -1512,96 +1543,32 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     roadYBias,
     trackLengthMeters,
   );
-  const centerLineMesh = new THREE.Mesh(centerDashGeo, lineMat);
-  centerLineMesh.name = 'FeatheredCenterDashes';
-  centerLineMesh.receiveShadow = true;
-  group.add(centerLineMesh);
+  const markingGeos = [edgeLinesGeo, centerDashGeo].filter(
+    (g) => g.attributes.position.count > 0 && (g.index?.count ?? 0) > 0,
+  );
+  const mergedMarkingsGeo =
+    markingGeos.length > 1
+      ? mergeGeometries(markingGeos, false)!
+      : markingGeos[0] ?? edgeLinesGeo;
+  if (markingGeos.length > 1) {
+    edgeLinesGeo.dispose();
+    centerDashGeo.dispose();
+  }
+  const markingsMesh = new THREE.Mesh(mergedMarkingsGeo, lineMat);
+  markingsMesh.name = 'FeatheredRoadMarkings';
+  markingsMesh.receiveShadow = true;
+  group.add(markingsMesh);
 
-  // 2. Alternating Red/White FIA Kerbs (1.2m wide along cleared edges only)
-  const kerbTex = createKerbTexture();
-  const kerbMat = new THREE.MeshStandardMaterial({
-    map: kerbTex,
-    roughness: 0.65,
-    metalness: 0.05,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  });
-  const leftKerbGeo = buildHorizontalRibbonGeometry(
-    samples,
-    -(roadHalf + kerbWidthMeters),
-    -roadHalf,
-    0.04,
-    0.012,
-    2.4,
-    leftValidMask,
-    roadYBias,
-  );
-  const rightKerbGeo = buildHorizontalRibbonGeometry(
-    samples,
-    roadHalf,
-    roadHalf + kerbWidthMeters,
-    0.012,
-    0.04,
-    2.4,
-    rightValidMask,
-    roadYBias,
-  );
-  const leftKerb = new THREE.Mesh(leftKerbGeo, kerbMat);
-  leftKerb.receiveShadow = true;
-  const rightKerb = new THREE.Mesh(rightKerbGeo, kerbMat);
-  rightKerb.receiveShadow = true;
-  group.add(leftKerb, rightKerb);
-
-  // Subtle concrete shoulder apron dropping from cleared outer kerbs into clamped terrain
-  const shoulderMat = new THREE.MeshStandardMaterial({
-    color: 0x3b4046,
-    roughness: 0.9,
-    metalness: 0.05,
-  });
-  const leftShoulderGeo = buildHorizontalRibbonGeometry(
-    samples,
-    -(roadHalf + kerbWidthMeters + 0.5),
-    -(roadHalf + kerbWidthMeters),
-    -0.38,
-    0.04,
-    8,
-    leftValidMask,
-  );
-  const rightShoulderGeo = buildHorizontalRibbonGeometry(
-    samples,
-    roadHalf + kerbWidthMeters,
-    roadHalf + kerbWidthMeters + 0.5,
-    0.04,
-    -0.38,
-    8,
-    rightValidMask,
-  );
-  group.add(
-    new THREE.Mesh(leftShoulderGeo, shoulderMat),
-    new THREE.Mesh(rightShoulderGeo, shoulderMat),
-  );
-
-  // 3. Metallic Armco Guardrails at ±8.2m (junction-filtered) + InstancedMesh Steel Posts + Terminal End-Post Caps
-  const armcoMat = new THREE.MeshStandardMaterial({
-    color: 0xc2cbd4,
-    metalness: 0.8,
-    roughness: 0.32,
-  });
+  // 3. Merged Metallic Armco Guardrails + Steel Posts + Terminal End-Caps (1 draw call)
   const leftBarrierGeo = buildArmcoBarrierGeometry(samples, -barrierOffsetMeters, leftValidMask);
   const rightBarrierGeo = buildArmcoBarrierGeometry(samples, barrierOffsetMeters, rightValidMask);
-  const leftBarrier = new THREE.Mesh(leftBarrierGeo, armcoMat);
-  leftBarrier.castShadow = true;
-  leftBarrier.receiveShadow = true;
-  const rightBarrier = new THREE.Mesh(rightBarrierGeo, armcoMat);
-  rightBarrier.castShadow = true;
-  rightBarrier.receiveShadow = true;
-  group.add(leftBarrier, rightBarrier);
+  stampVertexColorAndTransform(leftBarrierGeo, '#c2cbd4');
+  stampVertexColorAndTransform(rightBarrierGeo, '#c2cbd4');
 
-  // Instanced steel guardrail posts only along active barrier segments every ~4m (2 segments)
   const postStep = 2;
-  const postSpecs: { x: number; y: number; z: number; yaw: number }[] = [];
-  const endCapSpecs: { x: number; y: number; z: number; yaw: number }[] = [];
+  const basePostGeo = new THREE.BoxGeometry(0.1, 0.96, 0.14);
+  const baseCapGeo = new THREE.BoxGeometry(0.11, 0.45, 0.16);
+  const barrierParts: THREE.BufferGeometry[] = [leftBarrierGeo, rightBarrierGeo];
 
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
@@ -1610,107 +1577,85 @@ export function buildSalatigaTrack(routeGeoJson: SalatigaGeoJson): SalatigaTrack
     if (leftValidMask[i]) {
       if (i % postStep === 0) {
         const off = -(barrierOffsetMeters + 0.11);
-        postSpecs.push({
-          x: s.position.x + s.right.x * off,
-          y: s.position.y + 0.34,
-          z: s.position.z + s.right.z * off,
-          yaw,
-        });
+        barrierParts.push(
+          stampVertexColorAndTransform(
+            basePostGeo.clone(),
+            '#6b7480',
+            s.position.x + s.right.x * off,
+            s.position.y + 0.34,
+            s.position.z + s.right.z * off,
+            yaw,
+          ),
+        );
       }
-      const isRunStart = i === 0 || !leftValidMask[i - 1];
-      const isRunEnd = i === samples.length - 1 || !leftValidMask[i + 1];
-      if (isRunStart || isRunEnd) {
+      if (i === 0 || !leftValidMask[i - 1] || i === samples.length - 1 || !leftValidMask[i + 1]) {
         const off = -(barrierOffsetMeters + 0.04);
-        endCapSpecs.push({
-          x: s.position.x + s.right.x * off,
-          y: s.position.y + 0.56,
-          z: s.position.z + s.right.z * off,
-          yaw,
-        });
+        barrierParts.push(
+          stampVertexColorAndTransform(
+            baseCapGeo.clone(),
+            '#aeb8c2',
+            s.position.x + s.right.x * off,
+            s.position.y + 0.56,
+            s.position.z + s.right.z * off,
+            yaw,
+          ),
+        );
       }
     }
 
     if (rightValidMask[i]) {
       if (i % postStep === 0) {
         const off = barrierOffsetMeters + 0.11;
-        postSpecs.push({
-          x: s.position.x + s.right.x * off,
-          y: s.position.y + 0.34,
-          z: s.position.z + s.right.z * off,
-          yaw,
-        });
+        barrierParts.push(
+          stampVertexColorAndTransform(
+            basePostGeo.clone(),
+            '#6b7480',
+            s.position.x + s.right.x * off,
+            s.position.y + 0.34,
+            s.position.z + s.right.z * off,
+            yaw,
+          ),
+        );
       }
-      const isRunStart = i === 0 || !rightValidMask[i - 1];
-      const isRunEnd = i === samples.length - 1 || !rightValidMask[i + 1];
-      if (isRunStart || isRunEnd) {
+      if (i === 0 || !rightValidMask[i - 1] || i === samples.length - 1 || !rightValidMask[i + 1]) {
         const off = barrierOffsetMeters + 0.04;
-        endCapSpecs.push({
-          x: s.position.x + s.right.x * off,
-          y: s.position.y + 0.56,
-          z: s.position.z + s.right.z * off,
-          yaw,
-        });
+        barrierParts.push(
+          stampVertexColorAndTransform(
+            baseCapGeo.clone(),
+            '#aeb8c2',
+            s.position.x + s.right.x * off,
+            s.position.y + 0.56,
+            s.position.z + s.right.z * off,
+            yaw,
+          ),
+        );
       }
     }
   }
+  basePostGeo.dispose();
+  baseCapGeo.dispose();
 
-  const postGeo = new THREE.BoxGeometry(0.1, 0.96, 0.14);
-  const postMat = new THREE.MeshStandardMaterial({
-    color: 0x6b7480,
+  const mergedBarrierGeo = mergeGeometries(barrierParts, false)!;
+  barrierParts.forEach((g) => g.dispose());
+
+  const armcoMat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
     metalness: 0.72,
-    roughness: 0.42,
+    roughness: 0.36,
   });
-  const postInstanced = new THREE.InstancedMesh(postGeo, postMat, Math.max(1, postSpecs.length));
-  postInstanced.castShadow = true;
-  postInstanced.receiveShadow = true;
+  const barrierMesh = new THREE.Mesh(mergedBarrierGeo, armcoMat);
+  barrierMesh.name = 'ArmcoBarrierSystem';
+  barrierMesh.castShadow = false;
+  barrierMesh.receiveShadow = true;
+  group.add(barrierMesh);
 
-  const dummy = new THREE.Object3D();
-  for (let i = 0; i < postSpecs.length; i++) {
-    const p = postSpecs[i];
-    dummy.position.set(p.x, p.y, p.z);
-    dummy.rotation.set(0, p.yaw, 0);
-    dummy.updateMatrix();
-    postInstanced.setMatrixAt(i, dummy.matrix);
-  }
-  postInstanced.count = postSpecs.length;
-  postInstanced.instanceMatrix.needsUpdate = true;
-  postInstanced.computeBoundingSphere();
-  group.add(postInstanced);
-
-  // Sleek low-profile grey metallic terminals flush with the W-beam rail where barriers terminate
-  if (endCapSpecs.length > 0) {
-    const capGeo = new THREE.BoxGeometry(0.11, 0.45, 0.16);
-    const capMat = new THREE.MeshStandardMaterial({
-      color: 0xaeb8c2,
-      metalness: 0.78,
-      roughness: 0.34,
-    });
-    const endCapInstanced = new THREE.InstancedMesh(capGeo, capMat, endCapSpecs.length);
-    endCapInstanced.castShadow = true;
-    endCapInstanced.receiveShadow = true;
-    for (let i = 0; i < endCapSpecs.length; i++) {
-      const c = endCapSpecs[i];
-      dummy.position.set(c.x, c.y, c.z);
-      dummy.rotation.set(0, c.yaw, 0);
-      dummy.updateMatrix();
-      endCapInstanced.setMatrixAt(i, dummy.matrix);
-    }
-    endCapInstanced.instanceMatrix.needsUpdate = true;
-    endCapInstanced.computeBoundingSphere();
-    group.add(endCapInstanced);
-  }
-
-  // 4. Start/Finish Gantry Arch at Bundaran Tamansari (t = 0, cantilevered to keep roundabout clear)
+  // 4. Start/Finish Gantry Arch at Bundaran Tamansari (2 batched meshes)
   const gantry = buildStartFinishGantry(samples[0]);
   group.add(gantry);
 
-  // 5. Continuous Highland Terrain (with Zero-Clipping Guarantee)
+  // 5. Continuous Highland Terrain & Mount Merbabu Backdrop (2 batched meshes)
   const terrainGroup = buildHighlandTerrain(samples, minX, maxX, minZ, maxZ);
   group.add(terrainGroup);
-
-  // 6. Stylized Mount Merbabu Backdrop (> 3,200m from route perimeter)
-  const merbabu = buildMountMerbabuBackdrop(minX, maxX, maxZ);
-  group.add(merbabu);
 
   // Build O(1) spatial hash grid over track segments for zero-GC runtime collision & leg-transition queries
   const segGridCellSize = 32;

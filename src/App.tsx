@@ -900,6 +900,9 @@ export default function App() {
                 <option value="highland-cafe">highland-cafe</option>
                 <option value="finish-gate">finish-gate</option>
                 <option value="grand-hotel">grand-hotel</option>
+                <option value="tamansari-arcade">tamansari-arcade</option>
+                <option value="pasar-raya-ruko">pasar-raya-ruko</option>
+                <option value="pasar-raya-ruko-south">pasar-raya-ruko-south</option>
               </select>
             </div>
 
@@ -914,7 +917,7 @@ export default function App() {
                 <input
                   type="range"
                   min={4}
-                  max={56}
+                  max={140}
                   step={0.5}
                   value={selectedBuilding.widthMeters}
                   onChange={(e) =>

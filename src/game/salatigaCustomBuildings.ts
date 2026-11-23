@@ -20,11 +20,14 @@ export interface SalatigaCustomBuilding {
     | 'shophouse-row'         // Indonesian ruko row (Jl. Jend. Sudirman)
     | 'highland-cafe'         // Modern highland building/cafe (JLS - Wates)
     | 'finish-gate'           // Wates finish arch & buildings
-    | 'grand-hotel';          // Grand Wahid Hotel (Jl. Jend. Sudirman)
+    | 'grand-hotel'           // Grand Wahid Hotel (Jl. Jend. Sudirman)
+    | 'tamansari-arcade'      // Pertokoan Tamansari / Tamansari Shopping Centre
+    | 'pasar-raya-ruko'       // Ruko Pasar Raya II Block 1 (Sate Sapi Suruh, Morodadi, Sinar)
+    | 'pasar-raya-ruko-south'; // Ruko Pasar Raya II Block 2 (Mandiri, Wadimor, Queen's, Lia, Safira)
   wallColor?: string;
   roofColor?: string;
   exclusionRadius?: number;   // Radius (default 22m) to skip generic GeoJSON polygons
-  facadeTextureUrl?: string;  // Optional photo-facade texture URL (atlas slots 12-15)
+  facadeTextureUrl?: string;  // Optional photo-facade texture URL (atlas slot 12)
 }
 
 export interface SalatigaBuildingsBuildResult {
@@ -96,6 +99,51 @@ export const SALATIGA_CUSTOM_BUILDINGS: SalatigaCustomBuilding[] = [
     exclusionRadius: 30,
   },
   {
+    id: 'pertokoan-tamansari',
+    name: 'PERTOKOAN TAMANSARI',
+    lon: 110.504979,
+    lat: -7.326152,
+    rotationDeg: 277,
+    widthMeters: 108,
+    depthMeters: 16,
+    floors: 2,
+    floorHeight: 4.4,
+    style: 'tamansari-arcade',
+    wallColor: '#dfa394',
+    roofColor: '#3b4954',
+    exclusionRadius: 58,
+  },
+  {
+    id: 'ruko-pasar-raya-2',
+    name: 'RUKO PASAR RAYA II',
+    lon: 110.504886,
+    lat: -7.326869,
+    rotationDeg: 277,
+    widthMeters: 38,
+    depthMeters: 15,
+    floors: 2,
+    floorHeight: 4.1,
+    style: 'pasar-raya-ruko',
+    wallColor: '#ede3cf',
+    roofColor: '#8c7a6b',
+    exclusionRadius: 24,
+  },
+  {
+    id: 'ruko-safira-block',
+    name: 'RUKO PASAR RAYA II (SAFIRA)',
+    lon: 110.504848,
+    lat: -7.327246,
+    rotationDeg: 277,
+    widthMeters: 44,
+    depthMeters: 15,
+    floors: 2,
+    floorHeight: 4.1,
+    style: 'pasar-raya-ruko-south',
+    wallColor: '#ede3cf',
+    roofColor: '#8c7a6b',
+    exclusionRadius: 26,
+  },
+  {
     id: 'grand-wahid-hotel',
     name: 'GRAND WAHID HOTEL',
     lon: 110.50418,
@@ -111,11 +159,26 @@ export const SALATIGA_CUSTOM_BUILDINGS: SalatigaCustomBuilding[] = [
     exclusionRadius: 34,
   },
   {
+    id: 'pasar-raya-2',
+    name: 'PASAR RAYA II SALATIGA',
+    lon: 110.504866,
+    lat: -7.327919,
+    rotationDeg: 276,
+    widthMeters: 88,
+    depthMeters: 34,
+    floors: 4,
+    floorHeight: 4.5,
+    style: 'market-complex',
+    wallColor: '#e2d3cc',
+    roofColor: '#9e8c82',
+    exclusionRadius: 50,
+  },
+  {
     id: 'ruko-jend-sudirman',
     name: 'RUKO JL. JEND. SUDIRMAN',
-    lon: 110.50486,
-    lat: -7.32735,
-    rotationDeg: 277,
+    lon: 110.504687,
+    lat: -7.328583,
+    rotationDeg: 274,
     widthMeters: 34,
     depthMeters: 11,
     floors: 3,
@@ -124,22 +187,6 @@ export const SALATIGA_CUSTOM_BUILDINGS: SalatigaCustomBuilding[] = [
     wallColor: '#ede0cf',
     roofColor: '#8d402d',
     exclusionRadius: 28,
-  },
-  {
-    id: 'pasar-raya-ii',
-    name: 'PASAR RAYA II SALATIGA',
-    lon: 110.504855,
-    lat: -7.328444,
-    rotationDeg: 275,
-    widthMeters: 28,
-    depthMeters: 22,
-    floors: 4,
-    floorHeight: 3.6,
-    style: 'market-complex',
-    wallColor: '#e5dccb',
-    roofColor: '#3d5873',
-    exclusionRadius: 42,
-    facadeTextureUrl: '/textures/pasar-raya-2.jpg',
   },
   {
     id: 'jls-wates-highland-cafe',
@@ -193,7 +240,7 @@ const ATLAS_GRID = 4;
 const CELL_SIZE = ATLAS_SIZE / ATLAS_GRID; // 512px
 const GUTTER_PX = 6;
 const INNER_SIZE = CELL_SIZE - GUTTER_PX * 2; // 500px
-const CHUNK_LENGTH_METERS = 150;
+const CHUNK_LENGTH_METERS = 1750;
 
 interface AtlasUvRect {
   u0: number;
@@ -632,6 +679,12 @@ function getSignboardColors(style: SalatigaCustomBuilding['style']): [string, st
       return ['#111827', '#ef4444', '#f9fafb'];
     case 'grand-hotel':
       return ['#e8cfa6', '#9e3b33', '#291d14'];
+    case 'tamansari-arcade':
+      return ['#f5e4be', '#b91c1c', '#291d14'];
+    case 'pasar-raya-ruko':
+      return ['#fff7ed', '#ea580c', '#7c2d12'];
+    case 'pasar-raya-ruko-south':
+      return ['#1d4ed8', '#fbbf24', '#ffffff'];
     default:
       return ['#1e293b', '#dc2626', '#f9fafb'];
   }
@@ -766,8 +819,18 @@ function drawGrandHotelSwatchesInSlot9Bottom(ctx: CanvasRenderingContext2D) {
 }
 
 function getSignRectFromHalfIndex(halfIdx: number): SignboardAtlasRect {
-  const slot = 4 + Math.floor(halfIdx / 2);
-  const isTopHalf = halfIdx % 2 === 0;
+  if (halfIdx === 10) {
+    return {
+      slot: 13,
+      subU0: 0,
+      subU1: 1,
+      subV0: 0.52,
+      subV1: 1.0,
+    };
+  }
+  const safeIdx = halfIdx % 10;
+  const slot = 4 + Math.floor(safeIdx / 2);
+  const isTopHalf = safeIdx % 2 === 0;
   return {
     slot,
     subU0: 0,
@@ -806,21 +869,361 @@ function getGrandHotelBaseAtlas(): Omit<GrandHotelAtlas, 'signCurved'> {
   };
 }
 
+function drawTamansariShopSignsSlot10(ctx: CanvasRenderingContext2D) {
+  const slot = 10;
+  const col = slot % ATLAS_GRID;
+  const row = Math.floor(slot / ATLAS_GRID);
+  const cellX = col * CELL_SIZE;
+  const cellY = row * CELL_SIZE;
+  const innerX = cellX + GUTTER_PX;
+  const innerY = cellY + GUTTER_PX;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(cellX, cellY, CELL_SIZE, CELL_SIZE);
+  ctx.clip();
+
+  // Neutral dark slate background between sign cells
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(cellX, cellY, CELL_SIZE, CELL_SIZE);
+
+  // 2 columns x 4 rows inside 500x500 inner area
+  const colStarts = [0, 256];
+  const colW = 244;
+  const rowH = 116;
+  const rowGap = 12;
+
+  const shopSigns: {
+    c: number;
+    r: number;
+    label: string;
+    bg: string;
+    accent: string;
+    fg: string;
+    mode?: 'blade' | 'cobaltGlass';
+  }[] = [
+    { c: 0, r: 0, label: 'WAHID MOTOR', bg: '#b91c1c', accent: '#f8fafc', fg: '#ffffff' },
+    { c: 1, r: 0, label: 'TAMANSARI TEKNIK', bg: '#1e3a8a', accent: '#fbbf24', fg: '#ffffff' },
+    { c: 0, r: 1, label: 'SHARP ELEKTRONIK', bg: '#111827', accent: '#dc2626', fg: '#f8fafc' },
+    { c: 1, r: 1, label: '+ APOTEK 24', bg: '#047857', accent: '#d1fae5', fg: '#ffffff' },
+    { c: 0, r: 2, label: 'TAMANSARI MEBEL', bg: '#78350f', accent: '#fcd34d', fg: '#fef3c7' },
+    { c: 1, r: 2, label: 'PARETO', bg: '#1d4ed8', accent: '#fde047', fg: '#ffffff' },
+    { c: 0, r: 3, label: 'BUCCHERI', bg: '#b91c1c', accent: '#fef2f2', fg: '#ffffff', mode: 'blade' },
+    { c: 1, r: 3, label: '', bg: '#1e3a8a', accent: '#cbd5e1', fg: '#ffffff', mode: 'cobaltGlass' },
+  ];
+
+  for (let i = 0; i < shopSigns.length; i++) {
+    const s = shopSigns[i];
+    const sx = innerX + colStarts[s.c];
+    const sy = innerY + s.r * (rowH + rowGap);
+
+    if (s.mode === 'cobaltGlass') {
+      // Cobalt-blue reflective curtain-wall glass with crisp silver mullions
+      const grad = ctx.createLinearGradient(sx, sy, sx + colW, sy + rowH);
+      grad.addColorStop(0, '#172554');
+      grad.addColorStop(0.5, '#2563eb');
+      grad.addColorStop(1, '#1e3a8a');
+      ctx.fillStyle = grad;
+      ctx.fillRect(sx, sy, colW, rowH);
+
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(sx + 4, sy + 4, colW - 8, rowH - 8);
+      ctx.fillStyle = 'rgba(248,250,252,0.48)';
+      ctx.fillRect(sx + colW * 0.33, sy + 4, 3, rowH - 8);
+      ctx.fillRect(sx + colW * 0.67, sy + 4, 3, rowH - 8);
+      ctx.fillRect(sx + 4, sy + rowH * 0.5 - 1.5, colW - 8, 3);
+    } else if (s.mode === 'blade') {
+      // Crimson-red vertical BUCCHERI blade sign texture (oriented for vertical blade face)
+      ctx.fillStyle = s.bg;
+      ctx.fillRect(sx, sy, colW, rowH);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(sx + 6, sy + 6, colW - 12, rowH - 12);
+      ctx.fillStyle = s.fg;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '800 34px Oxanium, "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(s.label, sx + colW * 0.5, sy + rowH * 0.52);
+    } else {
+      ctx.fillStyle = s.bg;
+      ctx.fillRect(sx, sy, colW, rowH);
+      ctx.fillStyle = s.accent;
+      ctx.fillRect(sx, sy, colW, 10);
+      ctx.fillRect(sx, sy + rowH - 10, colW, 10);
+      ctx.fillStyle = s.fg;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      let fs = 24;
+      while (fs > 14) {
+        ctx.font = `700 ${fs}px Oxanium, "Plus Jakarta Sans", sans-serif`;
+        if (ctx.measureText(s.label).width <= colW - 20) break;
+        fs -= 1;
+      }
+      ctx.fillText(s.label, sx + colW * 0.5, sy + rowH * 0.52);
+    }
+  }
+  ctx.restore();
+}
+
+const TAMANSARI_SHOP_SUBRECTS = [
+  { slot: 10, subU0: 0.015, subV0: 0.77, subU1: 0.475, subV1: 0.985 }, // Wahid Motor
+  { slot: 10, subU0: 0.525, subV0: 0.77, subU1: 0.985, subV1: 0.985 }, // Tamansari Teknik
+  { slot: 10, subU0: 0.015, subV0: 0.52, subU1: 0.475, subV1: 0.735 }, // Sharp Elektronik
+  { slot: 10, subU0: 0.525, subV0: 0.52, subU1: 0.985, subV1: 0.735 }, // Apotek 24
+  { slot: 10, subU0: 0.015, subV0: 0.27, subU1: 0.475, subV1: 0.485 }, // Tamansari Mebel
+  { slot: 10, subU0: 0.525, subV0: 0.27, subU1: 0.985, subV1: 0.485 }, // Pareto
+];
+const TAMANSARI_BUCCHERI_SUB = { slot: 10, subU0: 0.015, subV0: 0.02, subU1: 0.475, subV1: 0.235 };
+const TAMANSARI_COBALT_GLASS_SUB = { slot: 10, subU0: 0.525, subV0: 0.02, subU1: 0.985, subV1: 0.235 };
+
+function drawPasarRayaRukoTexturesSlot15(ctx: CanvasRenderingContext2D) {
+  const slot = 15;
+  const col = slot % ATLAS_GRID;
+  const row = Math.floor(slot / ATLAS_GRID);
+  const cellX = col * CELL_SIZE;
+  const cellY = row * CELL_SIZE;
+  const innerX = cellX + GUTTER_PX;
+  const innerY = cellY + GUTTER_PX;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(cellX, cellY, CELL_SIZE, CELL_SIZE);
+  ctx.clip();
+
+  ctx.fillStyle = '#ede3cf';
+  ctx.fillRect(cellX, cellY, CELL_SIZE, CELL_SIZE);
+
+  // Top strip (y: 0..108px in 500 -> subV 0.784..1.0): "SATE SAPI SURUH & BAKSO" signboard
+  const signH = 104;
+  ctx.fillStyle = '#fff7ed';
+  ctx.fillRect(innerX, innerY, INNER_SIZE, signH);
+  ctx.fillStyle = '#ea580c';
+  ctx.fillRect(innerX, innerY, INNER_SIZE, 12);
+  ctx.fillRect(innerX, innerY + signH - 12, INNER_SIZE, 12);
+  ctx.fillStyle = '#9a3412';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '800 32px Oxanium, "Plus Jakarta Sans", sans-serif';
+  ctx.fillText('SATE SAPI SURUH & BAKSO', innerX + INNER_SIZE * 0.5, innerY + signH * 0.52);
+
+  // Upper-mid band (y: 124..250px -> subV 0.50..0.752): Orange-and-cream striped fabric awning
+  const awnY = innerY + 124;
+  const awnH = 126;
+  const stripes = 14;
+  const sw = INNER_SIZE / stripes;
+  for (let i = 0; i < stripes; i++) {
+    ctx.fillStyle = i % 2 === 0 ? '#ea580c' : '#fef3c7';
+    ctx.fillRect(innerX + i * sw, awnY, sw + 0.5, awnH);
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.fillRect(innerX, awnY + awnH - 14, INNER_SIZE, 14);
+
+  // Bottom half (y: 268..500px -> subV 0.0..0.464): Large 2-story "TOKO MORODADI" billboard
+  const bbY = innerY + 268;
+  const bbH = INNER_SIZE - 268;
+  ctx.fillStyle = '#1e3a8a';
+  ctx.fillRect(innerX, bbY, INNER_SIZE, bbH);
+  ctx.fillStyle = '#dc2626';
+  ctx.fillRect(innerX, bbY, INNER_SIZE, 28);
+  ctx.fillStyle = '#facc15';
+  ctx.fillRect(innerX, bbY + 28, INNER_SIZE, 6);
+  ctx.strokeStyle = '#f8fafc';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(innerX + 10, bbY + 42, INNER_SIZE - 20, bbH - 52);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 50px Oxanium, "Plus Jakarta Sans", sans-serif';
+  ctx.fillText('TOKO MORODADI', innerX + INNER_SIZE * 0.5, bbY + bbH * 0.5);
+  ctx.fillStyle = '#fde047';
+  ctx.font = '700 22px Oxanium, "Plus Jakarta Sans", sans-serif';
+  ctx.fillText('BAHAN BANGUNAN · CAT · ALAT LISTRIK', innerX + INNER_SIZE * 0.5, bbY + bbH * 0.78);
+
+  ctx.restore();
+}
+
+const SATE_SURUH_SIGN_SUB = { slot: 15, subU0: 0.02, subV0: 0.80, subU1: 0.98, subV1: 0.98 };
+const ORANGE_AWNING_SUB = { slot: 15, subU0: 0.02, subV0: 0.51, subU1: 0.98, subV1: 0.74 };
+const TOKO_MORODADI_SUB = { slot: 15, subU0: 0.02, subV0: 0.02, subU1: 0.98, subV1: 0.45 };
+
+function drawSafiraRukoTexturesSlot14(ctx: CanvasRenderingContext2D) {
+  const slot = 14;
+  const col = slot % ATLAS_GRID;
+  const row = Math.floor(slot / ATLAS_GRID);
+  const cellX = col * CELL_SIZE;
+  const cellY = row * CELL_SIZE;
+  const innerX = cellX + GUTTER_PX;
+  const innerY = cellY + GUTTER_PX;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(cellX, cellY, CELL_SIZE, CELL_SIZE);
+  ctx.clip();
+
+  ctx.fillStyle = '#ede3cf';
+  ctx.fillRect(cellX, cellY, CELL_SIZE, CELL_SIZE);
+
+  const halfW = 244;
+  const rightX = innerX + 256;
+  const rowH = 112;
+
+  const drawPanel = (
+    px: number,
+    py: number,
+    pw: number,
+    ph: number,
+    bg: string,
+    accent: string,
+    fg: string,
+    title: string,
+    subtitle?: string,
+    fontSize = 30,
+  ) => {
+    ctx.fillStyle = bg;
+    ctx.fillRect(px, py, pw, ph);
+    ctx.fillStyle = accent;
+    ctx.fillRect(px, py, pw, 10);
+    ctx.fillRect(px, py + ph - 10, pw, 10);
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(px + 5, py + 13, pw - 10, ph - 26);
+
+    ctx.fillStyle = fg;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let fs = fontSize;
+    while (fs > 14) {
+      ctx.font = `800 ${fs}px Oxanium, "Plus Jakarta Sans", sans-serif`;
+      if (ctx.measureText(title).width <= pw - 20) break;
+      fs -= 1;
+    }
+    if (subtitle) {
+      ctx.fillText(title, px + pw * 0.5, py + ph * 0.42);
+      ctx.fillStyle = accent;
+      ctx.font = '700 16px Oxanium, "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(subtitle, px + pw * 0.5, py + ph * 0.72);
+    } else {
+      ctx.fillText(title, px + pw * 0.5, py + ph * 0.52);
+    }
+  };
+
+  // Row 0 (y: 0..112): MANDIRI BUSANA | WADIMOR
+  drawPanel(innerX, innerY, halfW, rowH, '#065f46', '#fbbf24', '#ffffff', 'MANDIRI BUSANA', 'TEXTILE & KONVEKSI', 26);
+  drawPanel(rightX, innerY, halfW, rowH, '#991b1b', '#fde047', '#ffffff', 'WADIMOR', 'SARUNG TENUN KHAS', 34);
+
+  // Row 1 (y: 124..236): QUEEN'S | LIA
+  const r1Y = innerY + 124;
+  drawPanel(innerX, r1Y, halfW, rowH, '#581c87', '#f5d061', '#fdf4ff', "QUEEN'S", 'BOUTIQUE & FASHION', 34);
+  drawPanel(rightX, r1Y, halfW, rowH, '#f8fafc', '#1e3a8a', '#0f172a', 'LIA', 'TOKO BUSANA', 38);
+
+  // Row 2 (y: 248..368): Bold Blue & Gold TOKO EMAS SAFIRA
+  const r2Y = innerY + 248;
+  const r2H = 120;
+  drawPanel(innerX, r2Y, INNER_SIZE, r2H, '#1d4ed8', '#fbbf24', '#fef08a', 'TOKO EMAS SAFIRA', 'JUAL BELI PERHIASAN EMAS & BERLIAN', 44);
+
+  // Row 3 (y: 380..500): Striped Canvas Awning (#64748b / #b91c1c / #f8fafc) | SINAR
+  const r3Y = innerY + 380;
+  const r3H = 120;
+  const awnStripes = 12;
+  const sw = halfW / awnStripes;
+  const awnColors = ['#64748b', '#f8fafc', '#b91c1c', '#f8fafc'];
+  for (let i = 0; i < awnStripes; i++) {
+    ctx.fillStyle = awnColors[i % awnColors.length];
+    ctx.fillRect(innerX + i * sw, r3Y, sw + 0.5, r3H);
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(innerX, r3Y + r3H - 12, halfW, 12);
+
+  drawPanel(rightX, r3Y, halfW, r3H, '#0f172a', '#ef4444', '#ffffff', 'SINAR', 'ELEKTRONIK & OPTIK', 34);
+
+  ctx.restore();
+}
+
+function drawMarketGlassInSlot13Bottom(ctx: CanvasRenderingContext2D) {
+  const slot = 13;
+  const col = slot % ATLAS_GRID;
+  const row = Math.floor(slot / ATLAS_GRID);
+  const cellX = col * CELL_SIZE;
+  const cellY = row * CELL_SIZE;
+  const innerX = cellX + GUTTER_PX;
+  const halfH = Math.floor((INNER_SIZE - 16) / 2); // 242px
+  const botY = cellY + GUTTER_PX + halfH + 16;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(cellX, cellY + CELL_SIZE * 0.5, CELL_SIZE, CELL_SIZE * 0.5);
+  ctx.clip();
+
+  ctx.fillStyle = '#2f3e46';
+  ctx.fillRect(cellX, botY - 6, CELL_SIZE, halfH + 12);
+
+  // Left sub-rect (x: 0..244): Dark green-grey tinted curtain glass (#2f3e46) with mullions
+  const lw = 244;
+  const grad = ctx.createLinearGradient(innerX, botY, innerX + lw, botY + halfH);
+  grad.addColorStop(0, '#233037');
+  grad.addColorStop(0.5, '#374a54');
+  grad.addColorStop(1, '#26343b');
+  ctx.fillStyle = grad;
+  ctx.fillRect(innerX, botY, lw, halfH);
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(innerX + 4, botY + 4, lw - 8, halfH - 8);
+  ctx.fillStyle = 'rgba(226,211,204,0.52)';
+  for (let c = 1; c < 4; c++) {
+    ctx.fillRect(innerX + (lw * c) / 4 - 1.5, botY + 4, 3, halfH - 8);
+  }
+  for (let r = 1; r < 3; r++) {
+    ctx.fillRect(innerX + 4, botY + (halfH * r) / 3 - 1.5, lw - 8, 3);
+  }
+
+  // Right sub-rect (x: 256..500): Repeating horizontal band of square attic clerestory windows
+  const rx = innerX + 256;
+  ctx.fillStyle = '#d6c7c0';
+  ctx.fillRect(rx, botY, lw, halfH);
+  const cols = 4;
+  const cw = lw / cols;
+  for (let c = 0; c < cols; c++) {
+    const wx = rx + c * cw + 8;
+    const ww = cw - 16;
+    const wy = botY + 28;
+    const wh = halfH - 56;
+    ctx.fillStyle = '#2f3e46';
+    ctx.fillRect(wx, wy, ww, wh);
+    ctx.strokeStyle = '#e2d3cc';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(wx, wy, ww, wh);
+    ctx.fillStyle = 'rgba(148,163,184,0.35)';
+    ctx.fillRect(wx + 4, wy + 4, ww - 8, wh * 0.4);
+  }
+
+  ctx.restore();
+}
+
+const MANDIRI_SIGN_SUB = { slot: 14, subU0: 0.015, subV0: 0.785, subU1: 0.475, subV1: 0.985 };
+const WADIMOR_SIGN_SUB = { slot: 14, subU0: 0.525, subV0: 0.785, subU1: 0.985, subV1: 0.985 };
+const QUEENS_SIGN_SUB = { slot: 14, subU0: 0.015, subV0: 0.538, subU1: 0.475, subV1: 0.742 };
+const LIA_SIGN_SUB = { slot: 14, subU0: 0.525, subV0: 0.538, subU1: 0.985, subV1: 0.742 };
+const SAFIRA_SIGN_SUB = { slot: 14, subU0: 0.015, subV0: 0.274, subU1: 0.985, subV1: 0.494 };
+const SAFIRA_AWNING_SUB = { slot: 14, subU0: 0.015, subV0: 0.015, subU1: 0.475, subV1: 0.228 };
+const SINAR_SIGN_SUB = { slot: 14, subU0: 0.525, subV0: 0.015, subU1: 0.985, subV1: 0.228 };
+const CURTAIN_GLASS_SUB = { slot: 13, subU0: 0.015, subV0: 0.02, subU1: 0.475, subV1: 0.46 };
+const CLERESTORY_GLASS_SUB = { slot: 13, subU0: 0.525, subV0: 0.02, subU1: 0.985, subV1: 0.46 };
+
 function buildRuntimeTextureAtlas(buildings: SalatigaCustomBuilding[]): AtlasBuildResult {
   const signboardRectMap = new Map<string, SignboardAtlasRect>();
   const photoSlotMap = new Map<string, number>();
 
   for (let i = 0; i < buildings.length; i++) {
-    // Slots 4..8 hold up to 10 half-height signboard bands (indices 0..9)
-    const halfIdx = i % 10;
-    signboardRectMap.set(buildings[i].id, getSignRectFromHalfIndex(halfIdx));
+    // Slots 4..8 hold bands 0..9; Slot 13 top holds band 10
+    const idx = i < 11 ? i : i % 10;
+    signboardRectMap.set(buildings[i].id, getSignRectFromHalfIndex(idx));
   }
   const grandHotelBaseAtlas = getGrandHotelBaseAtlas();
 
   let nextPhotoSlot = 12;
   for (let i = 0; i < buildings.length; i++) {
     const b = buildings[i];
-    if (b.facadeTextureUrl && nextPhotoSlot <= 15) {
+    if (b.facadeTextureUrl && nextPhotoSlot <= 12) {
       photoSlotMap.set(b.id, nextPhotoSlot);
       nextPhotoSlot++;
     }
@@ -859,16 +1262,18 @@ function buildRuntimeTextureAtlas(buildings: SalatigaCustomBuilding[]): AtlasBui
   drawSlotWithGutter(ctx, 2, (x, y, w, h) => drawRukoSlot(ctx, x, y, w, h));
   drawSlotWithGutter(ctx, 3, (x, y, w, h) => drawHighlandSlot(ctx, x, y, w, h));
 
-  // Slots 4-8: Up to 10 high-contrast 3D building signboard bands
-  for (let i = 0; i < Math.min(buildings.length, 10); i++) {
+  // Slots 4-8 (0..9) + Slot 13 top (10): High-contrast 3D building signboard bands
+  for (let i = 0; i < Math.min(buildings.length, 11); i++) {
     const b = buildings[i];
     const [bg, accent, textCol] = getSignboardColors(b.style);
-    const slot = 4 + Math.floor(i / 2);
-    const isTopHalf = i % 2 === 0;
-    const displayLabel =
-      b.style === 'grand-hotel' && b.name === 'GRAND WAHID HOTEL'
-        ? 'Grand Wahid Hotel'
-        : b.name;
+    const slot = i === 10 ? 13 : 4 + Math.floor(i / 2);
+    const isTopHalf = i === 10 ? true : i % 2 === 0;
+    let displayLabel = b.name;
+    if (b.style === 'grand-hotel' && b.name === 'GRAND WAHID HOTEL') {
+      displayLabel = 'Grand Wahid Hotel';
+    } else if (b.style === 'tamansari-arcade' && b.name === 'PERTOKOAN TAMANSARI') {
+      displayLabel = 'TAMANSARI Shopping Centre';
+    }
     drawHalfBandSignboard(ctx, slot, isTopHalf, displayLabel, bg, accent, textCol, false);
   }
 
@@ -876,19 +1281,20 @@ function buildRuntimeTextureAtlas(buildings: SalatigaCustomBuilding[]): AtlasBui
   drawHalfBandSignboard(ctx, 9, true, 'Grand Wahid', '#2b1d12', '#d4af37', '#f5d061', true);
   // Slot 9 Bottom: Grand Hotel solid color & glass muntin swatches
   drawGrandHotelSwatchesInSlot9Bottom(ctx);
+  // Slot 10: Pertokoan Tamansari shopfront signs, BUCCHERI blade & cobalt curtain glass
+  drawTamansariShopSignsSlot10(ctx);
 
   // Slot 11: Architectural utility sub-rects (Clock Dial, Neutral White, Checkered Trim, Stone)
   drawSlotWithGutter(ctx, 11, (x, y, w, h) => drawUtilityPaletteSlot(ctx, x, y, w, h));
 
-  // Slots 12-15: Pre-fill procedural fallback textures before attempting async facade photo loads
-  for (let s = 12; s <= 15; s++) {
-    drawSlotWithGutter(ctx, s, (x, y, w, h) => {
-      if (s === 12) drawMarketSlot(ctx, x, y, w, h);
-      else if (s === 13) drawRukoSlot(ctx, x, y, w, h);
-      else if (s === 14) drawHighlandSlot(ctx, x, y, w, h);
-      else drawColonialSlot(ctx, x, y, w, h);
-    });
-  }
+  // Slot 12: Reserved procedural market fallback / Workbench photo upload
+  drawSlotWithGutter(ctx, 12, (x, y, w, h) => drawMarketSlot(ctx, x, y, w, h));
+  // Slot 13 Bottom: Pasar Raya II tinted curtain glass & clerestory window strip
+  drawMarketGlassInSlot13Bottom(ctx);
+  // Slot 14: Ruko Safira Block signage (Mandiri Busana, Wadimor, Queen's, Lia, Toko Emas Safira, Sinar, Striped Awning)
+  drawSafiraRukoTexturesSlot14(ctx);
+  // Slot 15: Dedicated Pasar Raya II Ruko Block 1 (Sate Sapi Suruh & Toko Morodadi) signage & awning
+  drawPasarRayaRukoTexturesSlot15(ctx);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -983,11 +1389,16 @@ interface TrackSpatialSample {
   y: number;
   z: number;
   s: number;
+  rx: number;
+  rz: number;
 }
 
 interface TrackSpatialQuery {
   trackLengthMeters: number;
-  queryNearest: (x: number, z: number) => { dist: number; roadY: number; s: number };
+  queryNearest: (
+    x: number,
+    z: number,
+  ) => { dist: number; roadY: number; s: number; lateralOffset: number };
 }
 
 function createTrackSpatialQuery(trackCurve: THREE.CatmullRomCurve3): TrackSpatialQuery {
@@ -996,11 +1407,21 @@ function createTrackSpatialQuery(trackCurve: THREE.CatmullRomCurve3): TrackSpati
   const pts = trackCurve.getSpacedPoints(sampleCount);
   const samples: TrackSpatialSample[] = new Array(pts.length);
   for (let i = 0; i < pts.length; i++) {
+    const prev = pts[Math.max(0, i - 1)];
+    const next = pts[Math.min(pts.length - 1, i + 1)];
+    const tx = next.x - prev.x;
+    const tz = next.z - prev.z;
+    const len = Math.hypot(tx, tz) || 1;
+    // right = cross(fwd, UP) = (-fz, 0, fx)
+    const rx = -tz / len;
+    const rz = tx / len;
     samples[i] = {
       x: pts[i].x,
       y: pts[i].y,
       z: pts[i].z,
       s: (i / sampleCount) * trackLengthMeters,
+      rx,
+      rz,
     };
   }
 
@@ -1031,12 +1452,16 @@ function createTrackSpatialQuery(trackCurve: THREE.CatmullRomCurve3): TrackSpati
   const stamp = new Int32Array(numSegs);
   let stampId = 1;
 
-  const queryNearest = (vx: number, vz: number): { dist: number; roadY: number; s: number } => {
+  const queryNearest = (
+    vx: number,
+    vz: number,
+  ): { dist: number; roadY: number; s: number; lateralOffset: number } => {
     const cx = Math.floor(vx / cellSize);
     const cz = Math.floor(vz / cellSize);
     let bestDistSq = Infinity;
     let bestY = 0;
     let bestS = 0;
+    let bestLat = 0;
     stampId++;
 
     const scanCellRange = (rad: number) => {
@@ -1067,6 +1492,7 @@ function createTrackSpatialQuery(trackCurve: THREE.CatmullRomCurve3): TrackSpati
               bestDistSq = dSq;
               bestY = a.y + (b.y - a.y) * t;
               bestS = a.s + (b.s - a.s) * t;
+              bestLat = (vx - px) * a.rx + (vz - pz) * a.rz;
             }
           }
         }
@@ -1097,6 +1523,7 @@ function createTrackSpatialQuery(trackCurve: THREE.CatmullRomCurve3): TrackSpati
           bestDistSq = dSq;
           bestY = a.y + (b.y - a.y) * t;
           bestS = a.s + (b.s - a.s) * t;
+          bestLat = (vx - px) * a.rx + (vz - pz) * a.rz;
         }
       }
     }
@@ -1105,6 +1532,7 @@ function createTrackSpatialQuery(trackCurve: THREE.CatmullRomCurve3): TrackSpati
       dist: bestDistSq < Infinity ? Math.sqrt(bestDistSq) : Infinity,
       roadY: bestY,
       s: bestS,
+      lateralOffset: bestLat,
     };
   };
 
@@ -1116,13 +1544,30 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-function estimateGroundY(vx: number, vz: number, dist: number, roadY: number): number {
+function estimateGroundY(
+  vx: number,
+  vz: number,
+  dist: number,
+  roadY: number,
+  s = -1,
+  lateralOffset = 0,
+): number {
   const hillWave =
     Math.sin(vx * 0.011 + 0.4) * Math.cos(vz * 0.013 - 0.2) * 3.8 +
     Math.sin((vx + vz) * 0.023) * 1.4;
 
+  const inEastUrbanPad = s >= 50.0 && s <= 430.0 && lateralOffset < 0;
+
   if (dist <= 11.0) {
     return roadY - 0.35;
+  }
+  if (inEastUrbanPad && dist <= 58.0) {
+    return roadY - 0.35;
+  }
+  if (inEastUrbanPad && dist <= 80.0) {
+    const blend = smoothstep(58.0, 80.0, dist);
+    const targetValley = THREE.MathUtils.lerp(roadY - 0.3, -2.8, blend);
+    return targetValley + hillWave * 0.2 * blend;
   }
   if (dist <= 15.0) {
     const blend = smoothstep(11.0, 15.0, dist);
@@ -1222,7 +1667,7 @@ function buildNormalizedAtlasPart(
     const groundAo = THREE.MathUtils.lerp(0.68, 1.0, smoothstep(0.0, 2.8, Math.max(0, vy)));
     // Darken undersides of overhangs/canopies/eaves
     const soffitAo = ny < -0.25 ? 0.68 : ny < 0.05 ? 0.94 : 1.0;
-    const ao = Math.max(0.62, Math.min(1.0, groundAo * soffitAo * partAo));
+    const ao = Math.max(0.56, Math.min(1.0, groundAo * soffitAo * partAo));
 
     colors[i * 3] = _partTint.r * ao;
     colors[i * 3 + 1] = _partTint.g * ao;
@@ -1933,6 +2378,56 @@ export function placeGrandHotel(
   return geo;
 }
 
+function buildTriangularGableGeometry(width: number, height: number, depth: number): THREE.BufferGeometry {
+  const hw = width * 0.5;
+  const hd = depth * 0.5;
+  // Build triangular gable prism in local space centered at base y = 0 .. height
+  const shape = new THREE.Shape();
+  shape.moveTo(-hw, 0);
+  shape.lineTo(hw, 0);
+  shape.lineTo(0, height);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, steps: 1 });
+  geo.translate(0, 0, -hd);
+  geo.computeVertexNormals();
+  // Normalize UVs into [0..1]
+  const uv = geo.attributes.uv as THREE.BufferAttribute;
+  if (uv) {
+    for (let i = 0; i < uv.count; i++) {
+      uv.setXY(i, 0.5, 0.5);
+    }
+    uv.needsUpdate = true;
+  }
+  return geo;
+}
+
+function addFrontSidewalkApron(specs: AtlasPartSpec[], w: number, d: number) {
+  const apronDepth = 6.2;
+  const apronPz = d * 0.5 + apronDepth * 0.5;
+  specs.push(
+    // Flat concrete sidewalk & storefront parking apron (top surface at y = +0.02, skirt to -2.2m)
+    {
+      geo: new THREE.BoxGeometry(w + 2.4, 2.24, apronDepth),
+      py: -1.1,
+      pz: apronPz,
+      slot: UTIL_SLOT,
+      ...STONE_SUB,
+      tintHex: '#cbd5e1',
+      aoHint: 0.86,
+    },
+    // Raised light-grey trotoar curb lip right beside the Armco barrier
+    {
+      geo: new THREE.BoxGeometry(w + 2.4, 0.14, 0.42),
+      py: -0.01,
+      pz: d * 0.5 + apronDepth - 0.18,
+      slot: UTIL_SLOT,
+      ...WHITE_SUB,
+      tintHex: '#94a3b8',
+      aoHint: 0.88,
+    },
+  );
+}
+
 function buildLandmarkGeometries(
   b: SalatigaCustomBuilding,
   groundY: number,
@@ -2049,63 +2544,547 @@ function buildLandmarkGeometries(
       );
     }
   } else if (b.style === 'market-complex') {
-    const facadeSlot = photoSlot ?? 1;
+    const plasterGrid = wallTint || '#e2d3cc';
+    const infillPanel = '#d6c7c0';
+    const atticTrim = roofTint || '#9e8c82';
+    const portRoofHex = '#6e473b';
+    const canopyGreen = '#2d6a4f';
+    const pergolaRust = '#5c4033';
 
+    const sx = w / 88;
+    const sz = d / 34;
+    const frontZ = d * 0.5;
+    const numFrontBays = 9;
+    const numSideBays = 4;
+    const bayW = w / numFrontBays;
+    const sideBayD = d / numSideBays;
+
+    // 0. Wide paved concrete market plaza apron (y = 0) extending forward to road kerb + north 8m side-street apron
+    const apronDepth = 7.0;
     specs.push(
-      // Foundation plinth
-      { geo: new THREE.BoxGeometry(w + 1.4, 2.4, d + 1.4), py: -1.1, slot: UTIL_SLOT, ...STONE_SUB, aoHint: 0.82 },
-      // Ground arcade recessed market core (darkened for arcade shadow depth)
-      { geo: new THREE.BoxGeometry(w - 1.6, floorH, d - 1.4), py: floorH * 0.5, slot: 1, subU0: 0, subV0: 0, subU1: 1, subV1: 0.34, aoHint: 0.72 },
-      // Upper multi-story market body
-      { geo: new THREE.BoxGeometry(w, Math.max(2.6, totalH - floorH), d), py: floorH + (totalH - floorH) * 0.5, slot: facadeSlot, aoHint: 0.96 },
-      // Rooftop parapet + mechanical penthouse
-      { geo: new THREE.BoxGeometry(w + 0.6, 1.15, d + 0.6), py: totalH + 0.55, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: roofTint },
-      { geo: new THREE.BoxGeometry(w * 0.36, 1.8, d * 0.36), py: totalH + 1.9, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#64748b' },
-      // 3D signboard frame + plaque
-      { geo: new THREE.BoxGeometry(Math.min(14.4, w * 0.54), 1.98, 0.28), py: totalH + 0.9, pz: d * 0.5 + 0.34, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#0f172a' },
-      { geo: new THREE.BoxGeometry(Math.min(14.0, w * 0.52), 1.8, 0.08), py: totalH + 0.9, pz: d * 0.5 + 0.49, ...signRect },
+      // Main market plaza apron extending forward toward the Armco kerb
+      {
+        geo: new THREE.BoxGeometry(w + 12.0 * sx, 2.35, apronDepth + 1.2),
+        px: 2.0 * sx,
+        py: -1.16,
+        pz: frontZ + apronDepth * 0.5 - 0.5,
+        slot: UTIL_SLOT,
+        ...STONE_SUB,
+        tintHex: '#cbd5e1',
+        aoHint: 0.86,
+      },
+      // Raised trotoar curb edge along road frontage
+      {
+        geo: new THREE.BoxGeometry(w + 12.0 * sx, 0.14, 0.44),
+        px: 2.0 * sx,
+        py: -0.02,
+        pz: frontZ + apronDepth - 0.12,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: '#94a3b8',
+        aoHint: 0.88,
+      },
+      // 8m paved north side-street lane separating Toko Emas Safira & Pasar Raya II
+      {
+        geo: new THREE.BoxGeometry(8.2, 2.32, d + apronDepth),
+        px: -w * 0.5 - 4.1,
+        py: -1.18,
+        pz: apronDepth * 0.5,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: '#475569',
+        aoHint: 0.82,
+      },
+      // Continuous foundation plinth under main market block
+      {
+        geo: new THREE.BoxGeometry(w + 1.8, 2.45, d + 1.6),
+        py: -1.2,
+        slot: UTIL_SLOT,
+        ...STONE_SUB,
+        aoHint: 0.8,
+      },
+      // Inner 4-story recessed infill core (#d6c7c0)
+      {
+        geo: new THREE.BoxGeometry(w - 0.8, totalH, d - 0.8),
+        py: totalH * 0.5,
+        slot: photoSlot ?? UTIL_SLOT,
+        ...(photoSlot !== undefined ? {} : WHITE_SUB),
+        tintHex: infillPanel,
+        aoHint: 0.82,
+      },
     );
 
-    // Arcade pillars along front facade
-    const numPillars = 6;
-    for (let p = 0; p < numPillars; p++) {
-      const px = THREE.MathUtils.lerp(-w * 0.46, w * 0.46, p / (numPillars - 1));
+    // 1. PALE PINK-BEIGE STRUCTURAL GRID (9 front bays x 4 deep, 4 floors)
+    // Horizontal floor bands wrapping front & side walls
+    for (let fl = 0; fl <= b.floors; fl++) {
+      const bandY = fl === 0 ? 0.24 : fl === b.floors ? totalH - 0.2 : fl * floorH;
+      const bandH = fl === b.floors ? 0.62 : 0.44;
       specs.push({
-        geo: new THREE.BoxGeometry(0.62, floorH, 0.62),
-        px,
-        py: floorH * 0.5,
-        pz: d * 0.5 - 0.35,
+        geo: new THREE.BoxGeometry(w + 0.9, bandH, d + 0.9),
+        py: bandY,
         slot: UTIL_SLOT,
         ...WHITE_SUB,
-        tintHex: wallTint,
-        aoHint: 0.78,
+        tintHex: plasterGrid,
+        aoHint: 0.94,
       });
     }
 
-    // Horizontal sun-breaker ledges per floor
-    for (let fl = 1; fl < b.floors; fl++) {
+    // 10 Vertical grid columns along +Z front (and rear)
+    for (let i = 0; i <= numFrontBays; i++) {
+      const cx = -w * 0.5 + i * bayW;
+      const isCorner = i === 0 || i === numFrontBays;
       specs.push({
-        geo: new THREE.BoxGeometry(w + 0.9, 0.26, d + 0.9),
-        py: fl * floorH + 0.25,
+        geo: new THREE.BoxGeometry(isCorner ? 1.28 * sx : 0.86 * sx, totalH + 0.35, 0.72),
+        px: cx,
+        py: (totalH + 0.35) * 0.5,
+        pz: frontZ - 0.14,
         slot: UTIL_SLOT,
         ...WHITE_SUB,
-        tintHex: '#f1f5f9',
+        tintHex: plasterGrid,
+        aoHint: 0.94,
       });
     }
 
-    // 5 stepped colorful market stall canopies along road-facing front
-    const canopyColors = ['#c2410c', '#0f766e', '#b45309', '#0f766e', '#c2410c'];
-    const segW = w / canopyColors.length;
-    for (let i = 0; i < canopyColors.length; i++) {
+    // Intermediate vertical columns along -X (north) and +X (south) side walls (4 bays deep)
+    for (let j = 1; j < numSideBays; j++) {
+      const szPos = -d * 0.5 + j * sideBayD;
+      for (const sideSign of [-1, 1]) {
+        specs.push({
+          geo: new THREE.BoxGeometry(0.72, totalH + 0.35, 0.86 * sz),
+          px: sideSign * (w * 0.5 - 0.14),
+          py: (totalH + 0.35) * 0.5,
+          pz: szPos,
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: plasterGrid,
+          aoHint: 0.92,
+        });
+      }
+    }
+
+    // Corner columns on back corners (-Z)
+    for (const sideSign of [-1, 1]) {
       specs.push({
-        geo: new THREE.BoxGeometry(segW - 0.32, 0.22, 3.3),
-        px: -w * 0.5 + segW * (i + 0.5),
-        py: 3.35,
-        pz: d * 0.5 + 1.45,
-        rx: 0.22,
+        geo: new THREE.BoxGeometry(1.25 * sx, totalH + 0.35, 1.25 * sz),
+        px: sideSign * (w * 0.5 - 0.2),
+        py: (totalH + 0.35) * 0.5,
+        pz: -d * 0.5 + 0.2,
         slot: UTIL_SLOT,
         ...WHITE_SUB,
-        tintHex: canopyColors[i],
+        tintHex: plasterGrid,
+        aoHint: 0.9,
+      });
+    }
+
+    // 2. RECESSED GRID INFILL BAYS + CORNER TINTED-GLASS CURTAIN WALLS (#2f3e46)
+    for (let i = 0; i < numFrontBays; i++) {
+      const bx = -w * 0.5 + bayW * (i + 0.5);
+      const isCornerBay = i === 0 || i === numFrontBays - 1;
+
+      // Ground-floor dark shaded arcade shopfronts (strong AO = 0.60)
+      specs.push({
+        geo: new THREE.BoxGeometry(bayW - 1.2 * sx, floorH * 0.82, 0.34),
+        px: bx,
+        py: floorH * 0.42,
+        pz: frontZ - 0.38,
+        slot: 1,
+        subU0: 0,
+        subV0: 0,
+        subU1: 1,
+        subV1: 0.34,
+        aoHint: 0.6,
+      });
+
+      // Floors 2..4 (indices 1..floors-1)
+      for (let fl = 1; fl < b.floors; fl++) {
+        const wy = fl * floorH + floorH * 0.52;
+        if (isCornerBay) {
+          // Stacked dark green-grey tinted glass curtain wall (#2f3e46)
+          specs.push({
+            geo: new THREE.BoxGeometry(bayW - 1.15 * sx, floorH * 0.72, 0.26),
+            px: bx,
+            py: wy,
+            pz: frontZ - 0.22,
+            ...CURTAIN_GLASS_SUB,
+            tintHex: '#ffffff',
+            aoHint: 0.9,
+          });
+        } else {
+          // Deep shaded window / ventilation louver opening inside concrete bay recess (AO = 0.60)
+          specs.push(
+            {
+              geo: new THREE.BoxGeometry(bayW - 1.6 * sx, floorH * 0.48, 0.24),
+              px: bx,
+              py: wy + 0.12,
+              pz: frontZ - 0.34,
+              slot: UTIL_SLOT,
+              ...WHITE_SUB,
+              tintHex: '#2f3e46',
+              aoHint: 0.6,
+            },
+            {
+              geo: new THREE.BoxGeometry(bayW - 1.3 * sx, 0.18, 0.36),
+              px: bx,
+              py: wy - floorH * 0.18,
+              pz: frontZ - 0.22,
+              slot: UTIL_SLOT,
+              ...WHITE_SUB,
+              tintHex: plasterGrid,
+              aoHint: 0.86,
+            },
+          );
+        }
+      }
+    }
+
+    // Wrap corner tinted-glass curtain walls onto 1st side bay (north -X and south +X) for floors 2, 3, 4
+    const firstSideBayZ = frontZ - sideBayD * 0.5;
+    for (const sideSign of [-1, 1]) {
+      for (let fl = 1; fl < b.floors; fl++) {
+        const wy = fl * floorH + floorH * 0.52;
+        specs.push({
+          geo: new THREE.BoxGeometry(0.26, floorH * 0.72, sideBayD - 1.2 * sz),
+          px: sideSign * (w * 0.5 - 0.22),
+          py: wy,
+          pz: firstSideBayZ,
+          ...CURTAIN_GLASS_SUB,
+          tintHex: '#ffffff',
+          aoHint: 0.88,
+        });
+      }
+      // Subtle recessed louver bands on remaining side bays 1..3
+      for (let j = 1; j < numSideBays; j++) {
+        const szPos = frontZ - sideBayD * (j + 0.5);
+        for (let fl = 1; fl < b.floors; fl++) {
+          specs.push({
+            geo: new THREE.BoxGeometry(0.22, floorH * 0.44, sideBayD - 1.6 * sz),
+            px: sideSign * (w * 0.5 - 0.32),
+            py: fl * floorH + floorH * 0.54,
+            pz: szPos,
+            slot: UTIL_SLOT,
+            ...WHITE_SUB,
+            tintHex: '#334155',
+            aoHint: 0.64,
+          });
+        }
+      }
+    }
+
+    // 3. TOP ATTIC CLERESTORY BAND (+3.5m above 4th floor cornice) + DECORATIVE FIN BRACKETS
+    const atticH = 3.5;
+    const atticW = w - 3.2 * sx;
+    const atticD = d - 3.2 * sz;
+    const atticCy = totalH + atticH * 0.5;
+    specs.push(
+      // Setback 5th attic body
+      {
+        geo: new THREE.BoxGeometry(atticW, atticH, atticD),
+        py: atticCy,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: infillPanel,
+        aoHint: 0.88,
+      },
+      // Continuous horizontal clerestory window band along front & rear
+      {
+        geo: new THREE.BoxGeometry(atticW - 1.2, 1.55, atticD + 0.16),
+        py: totalH + 1.75,
+        ...CLERESTORY_GLASS_SUB,
+        tintHex: '#ffffff',
+        aoHint: 0.86,
+      },
+      // Continuous clerestory window band along north & south attic sides
+      {
+        geo: new THREE.BoxGeometry(atticW + 0.16, 1.55, atticD - 1.2),
+        py: totalH + 1.75,
+        ...CLERESTORY_GLASS_SUB,
+        tintHex: '#ffffff',
+        aoHint: 0.86,
+      },
+      // Projecting attic roof cornice slab
+      {
+        geo: new THREE.BoxGeometry(atticW + 2.2, 0.48, atticD + 2.2),
+        py: totalH + atticH + 0.15,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: plasterGrid,
+        aoHint: 0.96,
+      },
+      // Attic roof cap & central mechanical penthouse
+      {
+        geo: new THREE.BoxGeometry(atticW * 0.36, 1.85, atticD * 0.38),
+        py: totalH + atticH + 1.3,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: atticTrim,
+        aoHint: 0.88,
+      },
+    );
+
+    // Vertical decorative fin brackets under projecting roof cornice
+    const frontFins = 16;
+    for (let f = 0; f <= frontFins; f++) {
+      const fx = THREE.MathUtils.lerp(-atticW * 0.48, atticW * 0.48, f / frontFins);
+      specs.push({
+        geo: new THREE.BoxGeometry(0.24, 0.55, 0.78),
+        px: fx,
+        py: totalH + atticH - 0.3,
+        pz: atticD * 0.5 + 0.52,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: plasterGrid,
+        aoHint: 0.72,
+      });
+    }
+    const sideFins = 6;
+    for (let f = 0; f <= sideFins; f++) {
+      const fz = THREE.MathUtils.lerp(-atticD * 0.46, atticD * 0.46, f / sideFins);
+      for (const sideSign of [-1, 1]) {
+        specs.push({
+          geo: new THREE.BoxGeometry(0.78, 0.55, 0.24),
+          px: sideSign * (atticW * 0.5 + 0.52),
+          py: totalH + atticH - 0.3,
+          pz: fz,
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: plasterGrid,
+          aoHint: 0.72,
+        });
+      }
+    }
+
+    // 4. MONUMENTAL RIGHT-CENTER PORTICO CANOPY (x = +22m scaled, 14m wide, projecting 7m forward)
+    const portCx = 22.0 * sx;
+    const portW = 14.0 * sx;
+    const portProj = 7.0;
+    const portPz = frontZ + portProj * 0.5;
+    const portFrontZ = frontZ + portProj;
+    const portEaveY = floorH * 2.02; // Double height (~9.1m)
+
+    specs.push(
+      // Shaded grand entry portal recessed inside building wall (AO = 0.60)
+      {
+        geo: new THREE.BoxGeometry(portW * 0.76, portEaveY * 0.82, 0.48),
+        px: portCx,
+        py: portEaveY * 0.41,
+        pz: frontZ - 0.22,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: '#1f2937',
+        aoHint: 0.6,
+      },
+      // Portico ceiling soffit deck (strong underside AO = 0.60)
+      {
+        geo: new THREE.BoxGeometry(portW + 0.6, 0.68, portProj + 0.4),
+        px: portCx,
+        py: portEaveY,
+        pz: portPz,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: plasterGrid,
+        aoHint: 0.6,
+      },
+      // Projecting portico frieze band
+      {
+        geo: new THREE.BoxGeometry(portW + 1.0, 0.75, portProj + 0.7),
+        px: portCx,
+        py: portEaveY + 0.6,
+        pz: portPz,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: atticTrim,
+        aoHint: 0.9,
+      },
+      // Pitched triangular gable truss roof (#6e473b) over portico
+      {
+        geo: buildTriangularGableGeometry(portW + 0.8, 3.3, portProj + 0.6),
+        px: portCx,
+        py: portEaveY + 0.95,
+        pz: portPz,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: portRoofHex,
+        aoHint: 0.88,
+      },
+      // Dark gable truss overhang slopes
+      {
+        geo: new THREE.BoxGeometry(portW * 0.62, 0.22, portProj + 1.1),
+        px: portCx - portW * 0.26,
+        py: portEaveY + 2.6,
+        pz: portPz + 0.15,
+        rz: 0.43,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: portRoofHex,
+      },
+      {
+        geo: new THREE.BoxGeometry(portW * 0.62, 0.22, portProj + 1.1),
+        px: portCx + portW * 0.26,
+        py: portEaveY + 2.6,
+        pz: portPz + 0.15,
+        rz: -0.43,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: portRoofHex,
+      },
+      // Prominent PASAR RAYA II SALATIGA 3D signboard on portico frieze
+      {
+        geo: new THREE.BoxGeometry(Math.min(12.2, portW * 0.86), 1.68, 0.26),
+        px: portCx,
+        py: portEaveY + 1.75,
+        pz: portFrontZ + 0.36,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: '#0f172a',
+      },
+      {
+        geo: new THREE.BoxGeometry(Math.min(11.8, portW * 0.82), 1.48, 0.08),
+        px: portCx,
+        py: portEaveY + 1.75,
+        pz: portFrontZ + 0.51,
+        ...signRect,
+      },
+    );
+
+    // 4 Massive stepped pink-cream pillars supporting portico
+    const portPillarPos: [number, number][] = [
+      [portCx - portW * 0.44, portFrontZ - 0.55],
+      [portCx + portW * 0.44, portFrontZ - 0.55],
+      [portCx - portW * 0.44, frontZ + portProj * 0.45],
+      [portCx + portW * 0.44, frontZ + portProj * 0.45],
+    ];
+    for (const [px, pz] of portPillarPos) {
+      specs.push(
+        { geo: new THREE.BoxGeometry(1.38, 0.65, 1.38), px, py: 0.32, pz, slot: UTIL_SLOT, ...STONE_SUB, aoHint: 0.6 },
+        { geo: new THREE.BoxGeometry(1.06, portEaveY - 0.5, 1.06), px, py: portEaveY * 0.5, pz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: plasterGrid, aoHint: 0.72 },
+        { geo: new THREE.BoxGeometry(1.32, 0.45, 1.32), px, py: portEaveY - 0.45, pz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: plasterGrid, aoHint: 0.62 },
+      );
+    }
+
+    // 5. 3 GREEN PITCHED-ROOF MARKET CANOPIES (#2d6a4f) & BLUE/WHITE STREET VENDOR STALLS LEFT OF PORTICO
+    const greenCanopyXs = [-32.5 * sx, -14.5 * sx, 3.5 * sx];
+    const gcW = 14.5 * sx;
+    const gcDepth = 3.6;
+    const gcEaveY = 3.55;
+    for (const gcx of greenCanopyXs) {
+      specs.push(
+        // Shaded underside canopy soffit (AO = 0.60)
+        {
+          geo: new THREE.BoxGeometry(gcW, 0.2, gcDepth),
+          px: gcx,
+          py: gcEaveY,
+          pz: frontZ + gcDepth * 0.5,
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: '#1b4332',
+          aoHint: 0.6,
+        },
+        // Pitched green canopy roof (#2d6a4f)
+        {
+          geo: buildTriangularGableGeometry(gcW + 0.4, 1.35, gcDepth + 0.35),
+          px: gcx,
+          py: gcEaveY + 0.1,
+          pz: frontZ + gcDepth * 0.5 + 0.05,
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: canopyGreen,
+          aoHint: 0.9,
+        },
+        // Steel canopy support posts
+        { geo: new THREE.BoxGeometry(0.24, gcEaveY, 0.24), px: gcx - gcW * 0.44, py: gcEaveY * 0.5, pz: frontZ + gcDepth - 0.25, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#475569', aoHint: 0.6 },
+        { geo: new THREE.BoxGeometry(0.24, gcEaveY, 0.24), px: gcx + gcW * 0.44, py: gcEaveY * 0.5, pz: frontZ + gcDepth - 0.25, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#475569', aoHint: 0.6 },
+      );
+    }
+
+    // 8 Low-poly blue/white street vendor stalls (#1d4ed8 / #f8fafc) beneath/along market plaza
+    for (let v = 0; v < 8; v++) {
+      const vx = THREE.MathUtils.lerp(-38.0 * sx, 9.5 * sx, v / 7);
+      const vz = frontZ + 4.35;
+      specs.push(
+        // White vendor stall counter/base (strong ground AO = 0.60)
+        { geo: new THREE.BoxGeometry(3.4, 1.15, 1.8), px: vx, py: 0.58, pz: vz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#f8fafc', aoHint: 0.64 },
+        // Slender stall frame posts
+        { geo: new THREE.BoxGeometry(0.12, 2.35, 0.12), px: vx - 1.55, py: 1.2, pz: vz + 0.78, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#94a3b8', aoHint: 0.62 },
+        { geo: new THREE.BoxGeometry(0.12, 2.35, 0.12), px: vx + 1.55, py: 1.2, pz: vz + 0.78, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#94a3b8', aoHint: 0.62 },
+        // Blue/white alternating stall pitched tarp roof (#1d4ed8 / #f8fafc)
+        {
+          geo: new THREE.BoxGeometry(3.7, 0.18, 2.3),
+          px: vx,
+          py: 2.45,
+          pz: vz,
+          rx: 0.18,
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: v % 2 === 0 ? '#1d4ed8' : '#f8fafc',
+          aoHint: 0.9,
+        },
+      );
+    }
+
+    // 6. SOUTH-END 3-STORY STEPPED WING & EXPOSED DARK-RUST STEEL PERGOLA FRAMING (#5c4033)
+    const wingW = 7.5 * sx;
+    const wingD = d * 0.74;
+    const wingH = floorH * 3;
+    const wingCx = w * 0.5 + wingW * 0.5 - 0.4;
+    const wingCz = -d * 0.06;
+    const pergolaY = wingH;
+    const pergolaH = 3.2;
+
+    specs.push(
+      // Foundation under south stepped wing
+      { geo: new THREE.BoxGeometry(wingW + 1.2, 2.45, wingD + 1.2), px: wingCx, py: -1.2, pz: wingCz, slot: UTIL_SLOT, ...STONE_SUB, aoHint: 0.78 },
+      // 3-story stepped annex volume
+      { geo: new THREE.BoxGeometry(wingW, wingH, wingD), px: wingCx, py: wingH * 0.5, pz: wingCz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: infillPanel, aoHint: 0.88 },
+      // Stepped floor bands on south wing
+      { geo: new THREE.BoxGeometry(wingW + 0.5, 0.4, wingD + 0.5), px: wingCx, py: floorH, pz: wingCz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: plasterGrid },
+      { geo: new THREE.BoxGeometry(wingW + 0.5, 0.4, wingD + 0.5), px: wingCx, py: floorH * 2, pz: wingCz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: plasterGrid },
+      { geo: new THREE.BoxGeometry(wingW + 0.7, 0.48, wingD + 0.7), px: wingCx, py: wingH, pz: wingCz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: plasterGrid },
+      // Side stair/corridor window strips on south wing
+      { geo: new THREE.BoxGeometry(wingW * 0.62, wingH * 0.68, 0.24), px: wingCx, py: wingH * 0.5, pz: wingCz + wingD * 0.5 + 0.04, ...CURTAIN_GLASS_SUB, tintHex: '#ffffff', aoHint: 0.84 },
+      { geo: new THREE.BoxGeometry(0.24, wingH * 0.68, wingD * 0.55), px: wingCx + wingW * 0.5 + 0.04, py: wingH * 0.5, pz: wingCz, ...CURTAIN_GLASS_SUB, tintHex: '#ffffff', aoHint: 0.84 },
+      // Open dark-rust steel pergola perimeter top beams (#5c4033)
+      { geo: new THREE.BoxGeometry(wingW + 0.6, 0.34, 0.34), px: wingCx, py: pergolaY + pergolaH, pz: wingCz + wingD * 0.46, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: pergolaRust },
+      { geo: new THREE.BoxGeometry(wingW + 0.6, 0.34, 0.34), px: wingCx, py: pergolaY + pergolaH, pz: wingCz - wingD * 0.46, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: pergolaRust },
+      { geo: new THREE.BoxGeometry(0.34, 0.34, wingD + 0.6), px: wingCx - wingW * 0.46, py: pergolaY + pergolaH, pz: wingCz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: pergolaRust },
+      { geo: new THREE.BoxGeometry(0.34, 0.34, wingD + 0.6), px: wingCx + wingW * 0.46, py: pergolaY + pergolaH, pz: wingCz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: pergolaRust },
+    );
+
+    // 4 Corner steel pergola posts + open lattice steel rafters
+    for (const pxSign of [-1, 1]) {
+      for (const pzSign of [-1, 1]) {
+        specs.push({
+          geo: new THREE.BoxGeometry(0.34, pergolaH, 0.34),
+          px: wingCx + pxSign * (wingW * 0.45),
+          py: pergolaY + pergolaH * 0.5,
+          pz: wingCz + pzSign * (wingD * 0.45),
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: pergolaRust,
+        });
+      }
+    }
+    for (let r = 1; r <= 5; r++) {
+      const rz = THREE.MathUtils.lerp(wingCz - wingD * 0.42, wingCz + wingD * 0.42, (r - 1) / 4);
+      specs.push({
+        geo: new THREE.BoxGeometry(wingW + 0.4, 0.24, 0.22),
+        px: wingCx,
+        py: pergolaY + pergolaH,
+        pz: rz,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: pergolaRust,
+      });
+    }
+    for (let c = 1; c <= 3; c++) {
+      const rx = THREE.MathUtils.lerp(wingCx - wingW * 0.36, wingCx + wingW * 0.36, (c - 1) / 2);
+      specs.push({
+        geo: new THREE.BoxGeometry(0.2, 0.22, wingD + 0.4),
+        px: rx,
+        py: pergolaY + pergolaH + 0.14,
+        pz: wingCz,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: pergolaRust,
       });
     }
   } else if (b.style === 'shophouse-row') {
@@ -2231,6 +3210,520 @@ function buildLandmarkGeometries(
       { geo: new THREE.BoxGeometry(Math.min(10.8, w * 0.54), 1.48, 0.26), py: floorH + 0.95, pz: d * 0.5 + 2.74, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#1c1917' },
       { geo: new THREE.BoxGeometry(Math.min(10.4, w * 0.52), 1.3, 0.08), py: floorH + 0.95, pz: d * 0.5 + 2.88, ...signRect },
     );
+  } else if (b.style === 'tamansari-arcade') {
+    const salmon = wallTint || '#dfa394';
+    const corniceSalmon = '#e8b4a6';
+    const cream = '#f3e7d8';
+    const domePink = '#c47d70';
+    const spireSlate = roofTint || '#3b4954';
+    const crimson = '#b91c1c';
+
+    const sx = w / 114;
+    const sz = d / 18;
+    const numBays = 12;
+    const bayW = w / numBays;
+    const frontZ = d * 0.5;
+    const gateX = -6.0 * sx;
+    const gateHalfW = 3.4 * sx; // 6.8m Jalan Tembus Tamansari underpass opening
+    const gateOpenH = Math.min(totalH - 1.6, 6.4);
+
+    addFrontSidewalkApron(specs, w, d);
+
+    // 0. Continuous stone foundation plinth & front sidewalk apron (-2.2m terrain skirt)
+    specs.push(
+      { geo: new THREE.BoxGeometry(w + 2.4, 2.4, d + 3.4 * sz), py: -1.15, pz: 0.6 * sz, slot: UTIL_SLOT, ...STONE_SUB, aoHint: 0.78 },
+    );
+
+    // 1. MAIN 2-STORY ARCADE MASSING SPLIT AROUND CENTRAL JALAN TEMBUS UNDERPASS
+    const leftWingSpan = (gateX - gateHalfW) - (-w * 0.5); // ~47.6m
+    const leftWingCx = -w * 0.5 + leftWingSpan * 0.5;
+    const rightWingSpan = (w * 0.5) - (gateX + gateHalfW); // ~59.6m
+    const rightWingCx = (gateX + gateHalfW) + rightWingSpan * 0.5;
+
+    const recessedDepth = Math.max(4, d - 1.6 * sz);
+    const recessedPz = -0.8 * sz;
+    const upperH = Math.max(2.6, totalH - floorH);
+    const upperPy = floorH + upperH * 0.5;
+
+    // Ground floor recessed shopfront cores (darkened arcade shadow AO = 0.62) + 2nd floor salmon bodies
+    for (const [wingCx, wingW] of [
+      [leftWingCx, leftWingSpan],
+      [rightWingCx, rightWingSpan],
+    ] as [number, number][]) {
+      specs.push(
+        // Recessed ground shopfront mass (set back 1.6m from front overhang)
+        { geo: new THREE.BoxGeometry(wingW, floorH, recessedDepth), px: wingCx, py: floorH * 0.5, pz: recessedPz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: salmon, aoHint: 0.62 },
+        // Upper 2nd floor overhanging salmon-pink body
+        { geo: new THREE.BoxGeometry(wingW, upperH, d), px: wingCx, py: upperPy, slot: photoSlot ?? UTIL_SLOT, ...(photoSlot !== undefined ? {} : WHITE_SUB), tintHex: salmon },
+        // Projecting upper cornice (#e8b4a6) & cream parapet molding (#f3e7d8)
+        { geo: new THREE.BoxGeometry(wingW + 0.3, 0.55, d + 0.9 * sz), px: wingCx, py: totalH + 0.28, pz: 0.25 * sz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: corniceSalmon },
+        { geo: new THREE.BoxGeometry(wingW + 0.5, 0.32, d + 1.15 * sz), px: wingCx, py: totalH + 0.68, pz: 0.3 * sz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream },
+        // Horizontal 1st-floor soffit fascia & cream arcade trim
+        { geo: new THREE.BoxGeometry(wingW, 0.42, 1.8 * sz), px: wingCx, py: floorH - 0.12, pz: frontZ - 0.85 * sz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: corniceSalmon, aoHint: 0.62 },
+        { geo: new THREE.BoxGeometry(wingW, 0.16, 0.26), px: wingCx, py: floorH + 0.14, pz: frontZ + 0.08, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream },
+      );
+    }
+
+    // 13 Vertical cream pilasters dividing the 12 rhythmic bays
+    for (let i = 0; i <= numBays; i++) {
+      const px = -w * 0.5 + i * bayW;
+      // Skip pilaster if it falls inside central archway opening
+      if (Math.abs(px - gateX) < gateHalfW - 0.3) continue;
+      specs.push(
+        { geo: new THREE.BoxGeometry(0.76 * sx, totalH + 0.72, 0.68), px, py: (totalH + 0.72) * 0.5, pz: frontZ - 0.05, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream, aoHint: 0.92 },
+        { geo: new THREE.BoxGeometry(1.02 * sx, 0.38, 0.92), px, py: 0.19, pz: frontZ - 0.02, slot: UTIL_SLOT, ...STONE_SUB, aoHint: 0.64 },
+      );
+    }
+
+    // 12 Rhythmic Shopfront Bays (bay #1 and bay #5 are modern cobalt-blue + crimson-red curtain walls)
+    let signCounter = 0;
+    for (let i = 0; i < numBays; i++) {
+      const bx = -w * 0.5 + bayW * (i + 0.5);
+      const isModernBay = i === 0 || i === 4; // bay #1 & bay #5 (1-based)
+      const overlapsGate = Math.abs(bx - gateX) < gateHalfW + bayW * 0.25;
+
+      if (overlapsGate) continue;
+
+      if (isModernBay) {
+        // Modern cobalt-blue curtain-wall glass storefront framed in bold crimson-red trim
+        const bayGlassW = bayW - 1.35 * sx;
+        specs.push(
+          // Outer crimson-red portal frame
+          { geo: new THREE.BoxGeometry(bayGlassW + 0.8, totalH + 0.25, 0.36), px: bx, py: (totalH + 0.25) * 0.5, pz: frontZ + 0.05, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: crimson },
+          // Full-height cobalt-blue reflective glass curtain wall
+          { geo: new THREE.BoxGeometry(bayGlassW, totalH - 0.35, 0.24), px: bx, py: totalH * 0.5, pz: frontZ + 0.16, ...TAMANSARI_COBALT_GLASS_SUB, tintHex: '#ffffff' },
+          // Horizontal crimson mid-transom bar
+          { geo: new THREE.BoxGeometry(bayGlassW + 0.3, 0.38, 0.42), px: bx, py: floorH, pz: frontZ + 0.18, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: crimson },
+        );
+      } else {
+        // Recessed ground-floor dark shopfront interior / roll-up shutters (AO = 0.62)
+        specs.push(
+          { geo: new THREE.BoxGeometry(bayW - 1.6 * sx, floorH * 0.78, 0.24), px: bx, py: floorH * 0.4, pz: frontZ - 1.55 * sz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#1f2937', aoHint: 0.62 },
+        );
+
+        // 2nd-floor wide segmental arch window cutout & arched cream brow surround
+        const winW = bayW * 0.68;
+        const winH = upperH * 0.56;
+        const winPy = floorH + upperH * 0.48;
+        specs.push(
+          // Dark recessed window backdrop (AO = 0.64)
+          { geo: new THREE.BoxGeometry(winW, winH, 0.22), px: bx, py: winPy, pz: frontZ - 0.04, ...TAMANSARI_COBALT_GLASS_SUB, tintHex: '#94a3b8', aoHint: 0.64 },
+          // Window sill
+          { geo: new THREE.BoxGeometry(winW + 0.4, 0.2, 0.36), px: bx, py: winPy - winH * 0.5, pz: frontZ + 0.08, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream },
+          // Segmental arch cream header molding curving upward (+Y via rx = -PI/2)
+          {
+            geo: new THREE.CylinderGeometry(winW * 0.56, winW * 0.56, 0.34, 10, 1, true, -Math.PI * 0.42, Math.PI * 0.84),
+            px: bx,
+            py: winPy + winH * 0.22,
+            pz: frontZ + 0.06,
+            rx: -Math.PI / 2,
+            sz: 0.38,
+            slot: UTIL_SLOT,
+            ...WHITE_SUB,
+            tintHex: cream,
+            aoHint: 0.88,
+          },
+          // Dark under-arch soffit shadow bar
+          { geo: new THREE.BoxGeometry(winW * 0.94, 0.22, 0.28), px: bx, py: winPy + winH * 0.46, pz: frontZ + 0.02, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#334155', aoHint: 0.62 },
+        );
+
+        // Colorful shop signboard above 1st-floor arcade fascia
+        const shopSub = TAMANSARI_SHOP_SUBRECTS[signCounter % TAMANSARI_SHOP_SUBRECTS.length];
+        signCounter++;
+        specs.push(
+          { geo: new THREE.BoxGeometry(bayW * 0.72, 1.08, 0.16), px: bx, py: floorH - 0.08, pz: frontZ + 0.16, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#1e293b' },
+          { geo: new THREE.BoxGeometry(bayW * 0.68, 0.92, 0.06), px: bx, py: floorH - 0.08, pz: frontZ + 0.26, ...shopSub },
+        );
+      }
+
+      // Vertical crimson BUCCHERI blade sign projecting perpendicular to facade on bay #4
+      if (i === 3) {
+        specs.push(
+          { geo: new THREE.BoxGeometry(0.18, 3.6, 1.45), px: bx + bayW * 0.38, py: floorH + 1.4, pz: frontZ + 0.95, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: crimson },
+          { geo: new THREE.BoxGeometry(0.06, 3.3, 1.28), px: bx + bayW * 0.38 + 0.1, py: floorH + 1.4, pz: frontZ + 0.95, ry: Math.PI / 2, rz: Math.PI / 2, ...TAMANSARI_BUCCHERI_SUB },
+          { geo: new THREE.BoxGeometry(0.06, 3.3, 1.28), px: bx + bayW * 0.38 - 0.1, py: floorH + 1.4, pz: frontZ + 0.95, ry: -Math.PI / 2, rz: Math.PI / 2, ...TAMANSARI_BUCCHERI_SUB },
+        );
+      }
+    }
+
+    // 2. NORTH-WEST CORNER CUPOLA DOME TOWER (Left end near Bundaran Tamansari, x ≈ -46m)
+    const cupolaX = -46.5 * sx;
+    const cupolaZ = frontZ - 4.0 * sz;
+    const cupolaW = 7.4 * sx;
+    const cupolaD = 7.4 * sz;
+    const towerBaseY = totalH + 0.6;
+    const towerBodyH = 4.0;
+    const belvedereBaseY = towerBaseY + towerBodyH;
+    const belvedereH = 2.7;
+    const domeBaseY = belvedereBaseY + belvedereH + 0.35;
+
+    specs.push(
+      // 3rd-story salmon-pink square tower block + cream corner trims & arched window recesses
+      { geo: new THREE.BoxGeometry(cupolaW, towerBodyH, cupolaD), px: cupolaX, py: towerBaseY + towerBodyH * 0.5, pz: cupolaZ, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: salmon },
+      { geo: new THREE.BoxGeometry(cupolaW + 0.6, 0.42, cupolaD + 0.6), px: cupolaX, py: belvedereBaseY + 0.16, pz: cupolaZ, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream },
+      { geo: new THREE.BoxGeometry(cupolaW * 0.44, towerBodyH * 0.56, 0.22), px: cupolaX, py: towerBaseY + towerBodyH * 0.5, pz: cupolaZ + cupolaD * 0.5 + 0.04, ...TAMANSARI_COBALT_GLASS_SUB, tintHex: '#94a3b8', aoHint: 0.66 },
+      { geo: new THREE.BoxGeometry(0.22, towerBodyH * 0.56, cupolaD * 0.44), px: cupolaX - cupolaW * 0.5 - 0.04, py: towerBaseY + towerBodyH * 0.5, pz: cupolaZ, ...TAMANSARI_COBALT_GLASS_SUB, tintHex: '#94a3b8', aoHint: 0.66 },
+      // Bell-cast terracotta-pink cupola dome (#c47d70) + flared skirt + lantern finial
+      { geo: new THREE.CylinderGeometry(3.15 * sx, 3.95 * sx, 0.8, 12), px: cupolaX, py: domeBaseY + 0.4, pz: cupolaZ, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: domePink },
+      {
+        geo: new THREE.SphereGeometry(3.12 * sx, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.5),
+        px: cupolaX,
+        py: domeBaseY + 0.72,
+        pz: cupolaZ,
+        sy: 0.88,
+        slot: UTIL_SLOT,
+        ...WHITE_SUB,
+        tintHex: domePink,
+      },
+      // Cream cupola lantern & pinnacle spire
+      { geo: new THREE.CylinderGeometry(0.65 * sx, 0.75 * sx, 1.15, 8), px: cupolaX, py: domeBaseY + 3.85, pz: cupolaZ, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream },
+      { geo: new THREE.ConeGeometry(0.9 * sx, 1.35, 8), px: cupolaX, py: domeBaseY + 5.05, pz: cupolaZ, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: domePink },
+      { geo: new THREE.CylinderGeometry(0.05, 0.1, 1.1, 6), px: cupolaX, py: domeBaseY + 6.1, pz: cupolaZ, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#d4af37' },
+    );
+    // Open 4-pillar belvedere pavilion under dome (with darkened interior soffit AO)
+    for (const pxSign of [-1, 1]) {
+      for (const pzSign of [-1, 1]) {
+        specs.push({
+          geo: new THREE.BoxGeometry(0.62, belvedereH, 0.62),
+          px: cupolaX + pxSign * (cupolaW * 0.36),
+          py: belvedereBaseY + belvedereH * 0.5 + 0.2,
+          pz: cupolaZ + pzSign * (cupolaD * 0.36),
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: cream,
+          aoHint: 0.74,
+        });
+      }
+    }
+    specs.push({
+      geo: new THREE.BoxGeometry(cupolaW * 0.88, 0.38, cupolaD * 0.88),
+      px: cupolaX,
+      py: domeBaseY - 0.05,
+      pz: cupolaZ,
+      slot: UTIL_SLOT,
+      ...WHITE_SUB,
+      tintHex: cream,
+      aoHint: 0.65,
+    });
+
+    // 3. CENTRAL GATEHOUSE ARCHWAY (Jalan Tembus Tamansari) & TWIN STEEPLE TOWERS (x ≈ -6m)
+    const gateBridgeH = Math.max(2.6, totalH + 1.4 - gateOpenH);
+    const gateBridgePy = gateOpenH + gateBridgeH * 0.5;
+    specs.push(
+      // Gatehouse overhead bridge spanning Jalan Tembus Tamansari underpass
+      { geo: new THREE.BoxGeometry(gateHalfW * 2 + 1.2, gateBridgeH, d + 0.4), px: gateX, py: gateBridgePy, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: salmon, aoHint: 0.84 },
+      // Shaded underpass tunnel ceiling & side jambs (AO = 0.62)
+      { geo: new THREE.BoxGeometry(gateHalfW * 2, 0.35, d), px: gateX, py: gateOpenH - 0.15, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream, aoHint: 0.62 },
+      { geo: new THREE.BoxGeometry(0.55, gateOpenH, d), px: gateX - gateHalfW + 0.25, py: gateOpenH * 0.5, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream, aoHint: 0.62 },
+      { geo: new THREE.BoxGeometry(0.55, gateOpenH, d), px: gateX + gateHalfW - 0.25, py: gateOpenH * 0.5, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream, aoHint: 0.62 },
+      // Stepped golden/cream gatehouse pediment crown
+      { geo: new THREE.BoxGeometry(gateHalfW * 2 + 1.8, 0.58, d + 1.1 * sz), px: gateX, py: totalH + 1.65, pz: 0.25 * sz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream },
+      { geo: new THREE.BoxGeometry(gateHalfW * 1.4, 1.15, 1.4), px: gateX, py: totalH + 2.45, pz: frontZ - 0.35, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: corniceSalmon },
+      // Prominent "TAMANSARI Shopping Centre" golden/cream fascia sign above central arch
+      { geo: new THREE.BoxGeometry(gateHalfW * 2.1, 1.72, 0.32), px: gateX, py: gateOpenH + 1.35, pz: frontZ + 0.26, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#d4af37' },
+      { geo: new THREE.BoxGeometry(gateHalfW * 2.0, 1.5, 0.08), px: gateX, py: gateOpenH + 1.35, pz: frontZ + 0.44, ...signRect },
+    );
+
+    // Twin 3-tier narrow steeple towers flanking the central arch (x ≈ -13m and x ≈ +1m)
+    const steepleXs = [gateX - 7.0 * sx, gateX + 7.0 * sx];
+    for (let t = 0; t < steepleXs.length; t++) {
+      const tx = steepleXs[t];
+      const tz = frontZ - 2.2 * sz;
+      const tw = 3.4 * sx;
+      const td = 3.6 * sz;
+      const t2Base = totalH + 0.7;
+      const t2H = 3.2;
+      const t3Base = t2Base + t2H;
+      const t3H = 2.9;
+      const spireBase = t3Base + t3H;
+
+      specs.push(
+        // Tier 2 salmon shaft + stepped cream cornice
+        { geo: new THREE.BoxGeometry(tw, t2H, td), px: tx, py: t2Base + t2H * 0.5, pz: tz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: salmon },
+        { geo: new THREE.BoxGeometry(tw + 0.55, 0.36, td + 0.55), px: tx, py: t3Base, pz: tz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream },
+        // Tier 3 belfry shaft + projecting cornice collar
+        { geo: new THREE.BoxGeometry(tw * 0.92, t3H, td * 0.92), px: tx, py: t3Base + t3H * 0.5, pz: tz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: corniceSalmon },
+        { geo: new THREE.BoxGeometry(tw + 0.6, 0.42, td + 0.6), px: tx, py: spireBase + 0.15, pz: tz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream },
+        // Steep slate-grey pyramidal spire roof (#3b4954) + vertical lightning rod spire
+        { geo: new THREE.ConeGeometry(tw * 0.72, 3.7, 4), px: tx, py: spireBase + 2.15, pz: tz, ry: Math.PI / 4, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: spireSlate },
+        { geo: new THREE.CylinderGeometry(0.04, 0.08, 2.3, 6), px: tx, py: spireBase + 5.05, pz: tz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#94a3b8' },
+      );
+
+      // Double arched belfry openings on front face of Tier 3 (dark recessed niches, AO = 0.62)
+      for (const side of [-1, 1]) {
+        const bxOff = tx + side * (tw * 0.21);
+        specs.push(
+          { geo: new THREE.BoxGeometry(tw * 0.26, t3H * 0.62, 0.22), px: bxOff, py: t3Base + t3H * 0.5, pz: tz + td * 0.46 + 0.04, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#1e293b', aoHint: 0.62 },
+          { geo: new THREE.BoxGeometry(tw * 0.32, 0.18, 0.26), px: bxOff, py: t3Base + t3H * 0.82, pz: tz + td * 0.46 + 0.06, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream },
+        );
+      }
+    }
+
+    // 4. SUBTLE ROOFTOP TELECOM MASTS & SATELLITE DISHES (#64748b)
+    const mastXs = [-30 * sx, 19 * sx, 44 * sx];
+    for (let m = 0; m < mastXs.length; m++) {
+      const mx = mastXs[m];
+      const mz = -3.0 * sz;
+      specs.push(
+        { geo: new THREE.CylinderGeometry(0.08, 0.26, 4.4, 4), px: mx, py: totalH + 2.5, pz: mz, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#64748b' },
+        { geo: new THREE.ConeGeometry(0.75, 0.45, 8), px: mx + 1.1, py: totalH + 1.35, pz: mz + 0.6, rx: 0.7, rz: -0.35, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#94a3b8' },
+      );
+    }
+  } else if (b.style === 'pasar-raya-ruko') {
+    const cream = wallTint || '#ede3cf';
+    const taupe = roofTint || '#8c7a6b';
+    const numBays = 4;
+    const bayW = w / numBays;
+    const frontZ = d * 0.5;
+    const upperH = Math.max(2.4, totalH - floorH);
+
+    addFrontSidewalkApron(specs, w, d);
+
+    specs.push(
+      // Foundation plinth
+      { geo: new THREE.BoxGeometry(w + 1.8, 2.4, d + 1.8), py: -1.15, slot: UTIL_SLOT, ...STONE_SUB, aoHint: 0.82 },
+      // Recessed ground-floor shopfront core (AO shadow depth = 0.60)
+      { geo: new THREE.BoxGeometry(w - 0.6, floorH, d - 1.2), py: floorH * 0.5, pz: -0.6, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream, aoHint: 0.6 },
+      // 2nd-floor continuous cream plaster massing
+      { geo: new THREE.BoxGeometry(w, upperH, d), py: floorH + upperH * 0.5, slot: photoSlot ?? UTIL_SLOT, ...(photoSlot !== undefined ? {} : WHITE_SUB), tintHex: cream },
+      // Horizontal floor-1/2 cornice molding & top roof parapet molding
+      { geo: new THREE.BoxGeometry(w + 0.5, 0.28, d + 0.7), py: floorH + 0.08, pz: 0.18, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: taupe },
+      { geo: new THREE.BoxGeometry(w + 0.6, 0.36, d + 0.85), py: totalH + 0.16, pz: 0.22, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: taupe },
+      // Flat roof slab behind gables
+      { geo: new THREE.BoxGeometry(w - 0.4, 0.22, d - 0.4), py: totalH + 0.1, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#64748b' },
+    );
+
+    // 4 rhythmic bay piers + 4 triangular gable parapets
+    for (let i = 0; i <= numBays; i++) {
+      const px = -w * 0.5 + i * bayW;
+      specs.push(
+        { geo: new THREE.BoxGeometry(0.48, totalH + 0.2, 0.52), px, py: (totalH + 0.2) * 0.5, pz: frontZ - 0.04, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream, aoHint: 0.9 },
+      );
+    }
+
+    for (let i = 0; i < numBays; i++) {
+      const bx = -w * 0.5 + bayW * (i + 0.5);
+      // Low triangular gable parapet centered at front roofline
+      specs.push(
+        {
+          geo: buildTriangularGableGeometry(bayW - 0.26, 1.55, 0.55),
+          px: bx,
+          py: totalH + 0.3,
+          pz: frontZ - 0.18,
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: cream,
+          aoHint: 0.95,
+        },
+        // Gable roof cap accent strips
+        {
+          geo: new THREE.BoxGeometry(bayW * 0.56, 0.16, 0.72),
+          px: bx - bayW * 0.24,
+          py: totalH + 1.08,
+          pz: frontZ - 0.16,
+          rz: 0.34,
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: taupe,
+        },
+        {
+          geo: new THREE.BoxGeometry(bayW * 0.56, 0.16, 0.72),
+          px: bx + bayW * 0.24,
+          py: totalH + 1.08,
+          pz: frontZ - 0.16,
+          rz: -0.34,
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: taupe,
+        },
+      );
+
+      // 2nd-floor windows on bay 0 (Sate Sapi Suruh) and bay 3 (Sinar)
+      if (i === 0 || i === 3) {
+        for (const wSide of [-1, 1]) {
+          const wx = bx + wSide * (bayW * 0.22);
+          const wy = floorH + upperH * 0.56;
+          specs.push(
+            { geo: new THREE.BoxGeometry(bayW * 0.28, upperH * 0.48, 0.18), px: wx, py: wy, pz: frontZ + 0.04, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#1f2937' },
+            { geo: new THREE.BoxGeometry(bayW * 0.23, upperH * 0.4, 0.22), px: wx, py: wy, pz: frontZ + 0.07, ...TAMANSARI_COBALT_GLASS_SUB, tintHex: '#94a3b8' },
+            { geo: new THREE.BoxGeometry(bayW * 0.31, 0.12, 0.28), px: wx, py: wy - upperH * 0.25, pz: frontZ + 0.1, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: taupe },
+          );
+        }
+      }
+
+      // Ground-floor recessed shuttered shopfront opening (AO = 0.60)
+      specs.push(
+        { geo: new THREE.BoxGeometry(bayW - 1.1, floorH * 0.76, 0.22), px: bx, py: floorH * 0.38, pz: frontZ - 1.25, slot: 2, subU0: 0, subV0: 0, subU1: 1, subV1: 0.42, aoHint: 0.6 },
+      );
+
+      if (i === 0) {
+        // Bay 0 (north): Orange-and-cream striped fabric awning
+        specs.push(
+          { geo: new THREE.BoxGeometry(bayW - 0.35, 0.18, 2.6), px: bx, py: 3.35, pz: frontZ + 1.15, rx: 0.34, ...ORANGE_AWNING_SUB, aoHint: 0.94 },
+        );
+      } else if (i === 1 || i === 2) {
+        // Middle bays: Crisp white canvas awnings beneath Toko Morodadi
+        specs.push(
+          { geo: new THREE.BoxGeometry(bayW - 0.35, 0.18, 2.5), px: bx, py: 3.35, pz: frontZ + 1.1, rx: 0.34, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#f8fafc', aoHint: 0.94 },
+        );
+      } else {
+        // Bay 3 (south): Striped slate/red/white awning under SINAR
+        specs.push(
+          { geo: new THREE.BoxGeometry(bayW - 0.35, 0.18, 2.5), px: bx, py: 3.35, pz: frontZ + 1.1, rx: 0.34, ...SAFIRA_AWNING_SUB, aoHint: 0.94 },
+        );
+      }
+    }
+
+    // Bay 0: "SATE SAPI SURUH & BAKSO" signboard
+    const sateCx = -w * 0.5 + bayW * 0.5;
+    specs.push(
+      { geo: new THREE.BoxGeometry(bayW * 0.92, 1.28, 0.22), px: sateCx, py: floorH + 0.55, pz: frontZ + 0.24, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#9a3412' },
+      { geo: new THREE.BoxGeometry(bayW * 0.86, 1.12, 0.08), px: sateCx, py: floorH + 0.55, pz: frontZ + 0.36, ...SATE_SURUH_SIGN_SUB },
+    );
+
+    // Bays 1..2: Large 2-story "TOKO MORODADI" billboard panels
+    const morodadiCx = 0;
+    specs.push(
+      { geo: new THREE.BoxGeometry(bayW * 1.84, totalH * 0.72, 0.26), px: morodadiCx, py: totalH * 0.56, pz: frontZ + 0.26, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#1e293b' },
+      { geo: new THREE.BoxGeometry(bayW * 1.76, totalH * 0.66, 0.08), px: morodadiCx, py: totalH * 0.56, pz: frontZ + 0.41, ...TOKO_MORODADI_SUB },
+    );
+
+    // Bay 3: "SINAR" horizontal signboard
+    const sinarCx = w * 0.5 - bayW * 0.5;
+    specs.push(
+      { geo: new THREE.BoxGeometry(bayW * 0.9, 1.24, 0.22), px: sinarCx, py: floorH + 0.55, pz: frontZ + 0.24, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#0f172a' },
+      { geo: new THREE.BoxGeometry(bayW * 0.84, 1.08, 0.08), px: sinarCx, py: floorH + 0.55, pz: frontZ + 0.36, ...SINAR_SIGN_SUB },
+    );
+
+    // 2 thin rooftop TV antennas above bays 0 & 3
+    for (const ax of [-w * 0.5 + bayW * 0.5, w * 0.5 - bayW * 0.5]) {
+      specs.push(
+        { geo: new THREE.CylinderGeometry(0.04, 0.07, 3.2, 4), px: ax, py: totalH + 1.7, pz: -1.5, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#64748b' },
+        { geo: new THREE.BoxGeometry(1.4, 0.05, 0.05), px: ax, py: totalH + 3.05, pz: -1.5, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#94a3b8' },
+        { geo: new THREE.BoxGeometry(1.0, 0.05, 0.05), px: ax, py: totalH + 2.65, pz: -1.5, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#94a3b8' },
+      );
+    }
+  } else if (b.style === 'pasar-raya-ruko-south') {
+    const cream = wallTint || '#ede3cf';
+    const taupe = roofTint || '#8c7a6b';
+    const numBays = 5;
+    const bayW = w / numBays;
+    const frontZ = d * 0.5;
+    const upperH = Math.max(2.4, totalH - floorH);
+
+    addFrontSidewalkApron(specs, w, d);
+
+    specs.push(
+      // Foundation plinth
+      { geo: new THREE.BoxGeometry(w + 1.8, 2.4, d + 1.8), py: -1.15, slot: UTIL_SLOT, ...STONE_SUB, aoHint: 0.82 },
+      // Recessed ground-floor shopfront core (AO shadow depth = 0.60)
+      { geo: new THREE.BoxGeometry(w - 0.6, floorH, d - 1.2), py: floorH * 0.5, pz: -0.6, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream, aoHint: 0.6 },
+      // 2nd-floor continuous cream plaster massing
+      { geo: new THREE.BoxGeometry(w, upperH, d), py: floorH + upperH * 0.5, slot: photoSlot ?? UTIL_SLOT, ...(photoSlot !== undefined ? {} : WHITE_SUB), tintHex: cream },
+      // Horizontal floor-1/2 cornice molding & top roof parapet molding
+      { geo: new THREE.BoxGeometry(w + 0.5, 0.28, d + 0.7), py: floorH + 0.08, pz: 0.18, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: taupe },
+      { geo: new THREE.BoxGeometry(w + 0.6, 0.36, d + 0.85), py: totalH + 0.16, pz: 0.22, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: taupe },
+      // Flat roof slab behind gables
+      { geo: new THREE.BoxGeometry(w - 0.4, 0.22, d - 0.4), py: totalH + 0.1, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#64748b' },
+    );
+
+    // 6 Bay piers
+    for (let i = 0; i <= numBays; i++) {
+      const px = -w * 0.5 + i * bayW;
+      specs.push(
+        { geo: new THREE.BoxGeometry(0.48, totalH + 0.2, 0.54), px, py: (totalH + 0.2) * 0.5, pz: frontZ - 0.04, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: cream, aoHint: 0.9 },
+      );
+    }
+
+    const leftBillboardSubs = [MANDIRI_SIGN_SUB, WADIMOR_SIGN_SUB, QUEENS_SIGN_SUB];
+    const leftBillboardFrames = ['#064e3b', '#7f1d1d', '#3b0764'];
+
+    for (let i = 0; i < numBays; i++) {
+      const bx = -w * 0.5 + bayW * (i + 0.5);
+      // 5 Triangular gable parapets + taupe ridge caps
+      specs.push(
+        {
+          geo: buildTriangularGableGeometry(bayW - 0.26, 1.55, 0.55),
+          px: bx,
+          py: totalH + 0.3,
+          pz: frontZ - 0.18,
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: cream,
+          aoHint: 0.95,
+        },
+        {
+          geo: new THREE.BoxGeometry(bayW * 0.56, 0.16, 0.72),
+          px: bx - bayW * 0.24,
+          py: totalH + 1.08,
+          pz: frontZ - 0.16,
+          rz: 0.34,
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: taupe,
+        },
+        {
+          geo: new THREE.BoxGeometry(bayW * 0.56, 0.16, 0.72),
+          px: bx + bayW * 0.24,
+          py: totalH + 1.08,
+          pz: frontZ - 0.16,
+          rz: -0.34,
+          slot: UTIL_SLOT,
+          ...WHITE_SUB,
+          tintHex: taupe,
+        },
+      );
+
+      // Upper floor per-bay detailing:
+      if (i < 3) {
+        // Bays 0..2 (north -> south): MANDIRI BUSANA, WADIMOR, QUEEN'S colorful upper billboards
+        specs.push(
+          { geo: new THREE.BoxGeometry(bayW * 0.88, upperH * 0.72, 0.22), px: bx, py: floorH + upperH * 0.5, pz: frontZ + 0.18, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: leftBillboardFrames[i] },
+          { geo: new THREE.BoxGeometry(bayW * 0.82, upperH * 0.64, 0.08), px: bx, py: floorH + upperH * 0.5, pz: frontZ + 0.31, ...leftBillboardSubs[i] },
+        );
+      } else {
+        // Bays 3..4 (LIA, TOKO EMAS SAFIRA): Dark-framed upper windows + horizontal signboards
+        for (const wSide of [-1, 1]) {
+          const wx = bx + wSide * (bayW * 0.22);
+          const wy = floorH + upperH * 0.58;
+          specs.push(
+            { geo: new THREE.BoxGeometry(bayW * 0.28, upperH * 0.44, 0.18), px: wx, py: wy, pz: frontZ + 0.04, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#1f2937' },
+            { geo: new THREE.BoxGeometry(bayW * 0.23, upperH * 0.36, 0.22), px: wx, py: wy, pz: frontZ + 0.07, ...TAMANSARI_COBALT_GLASS_SUB, tintHex: '#94a3b8' },
+            { geo: new THREE.BoxGeometry(bayW * 0.31, 0.12, 0.28), px: wx, py: wy - upperH * 0.23, pz: frontZ + 0.1, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: taupe },
+          );
+        }
+        if (i === 3) {
+          // Bay 3: LIA signboard
+          specs.push(
+            { geo: new THREE.BoxGeometry(bayW * 0.9, 1.15, 0.22), px: bx, py: floorH + 0.5, pz: frontZ + 0.22, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#1e3a8a' },
+            { geo: new THREE.BoxGeometry(bayW * 0.84, 1.0, 0.08), px: bx, py: floorH + 0.5, pz: frontZ + 0.35, ...LIA_SIGN_SUB },
+          );
+        } else {
+          // Bay 4 (far right corner bay next to side street): Bold blue-and-gold TOKO EMAS SAFIRA signboard
+          specs.push(
+            { geo: new THREE.BoxGeometry(bayW * 0.96, 1.38, 0.26), px: bx, py: floorH + 0.56, pz: frontZ + 0.24, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#fbbf24' },
+            { geo: new THREE.BoxGeometry(bayW * 0.9, 1.2, 0.08), px: bx, py: floorH + 0.56, pz: frontZ + 0.39, ...SAFIRA_SIGN_SUB },
+            // Corner blue accent band wrapping south corner
+            { geo: new THREE.BoxGeometry(0.22, 1.38, 2.2), px: w * 0.5 + 0.05, py: floorH + 0.56, pz: frontZ - 1.1, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#1d4ed8' },
+          );
+        }
+      }
+
+      // Ground floor: recessed shopfront shutters (AO = 0.60) + continuous striped canvas awning (#64748b / #b91c1c / #f8fafc)
+      specs.push(
+        { geo: new THREE.BoxGeometry(bayW - 1.05, floorH * 0.76, 0.22), px: bx, py: floorH * 0.38, pz: frontZ - 1.25, slot: 2, subU0: 0, subV0: 0, subU1: 1, subV1: 0.42, aoHint: 0.6 },
+        { geo: new THREE.BoxGeometry(bayW - 0.14, 0.18, 2.65), px: bx, py: 3.35, pz: frontZ + 1.15, rx: 0.34, ...SAFIRA_AWNING_SUB, aoHint: 0.94 },
+      );
+    }
+
+    // 2 thin rooftop TV antennas above bays 1 & 4
+    for (const ax of [-w * 0.5 + bayW * 1.5, -w * 0.5 + bayW * 4.5]) {
+      specs.push(
+        { geo: new THREE.CylinderGeometry(0.04, 0.07, 3.2, 4), px: ax, py: totalH + 1.7, pz: -1.5, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#64748b' },
+        { geo: new THREE.BoxGeometry(1.4, 0.05, 0.05), px: ax, py: totalH + 3.05, pz: -1.5, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#94a3b8' },
+        { geo: new THREE.BoxGeometry(1.0, 0.05, 0.05), px: ax, py: totalH + 2.65, pz: -1.5, slot: UTIL_SLOT, ...WHITE_SUB, tintHex: '#94a3b8' },
+      );
+    }
   } else {
     // 'finish-gate': Race Control Hospitality Pavilion & Timing Tower
     const facadeSlot = photoSlot ?? 3;
@@ -2496,7 +3989,7 @@ function buildChunkedOsmMeshes(
         const vx = ring[i][0];
         const vz = ring[i][1];
         const hit = trackQuery.queryNearest(vx, vz);
-        const gy = estimateGroundY(vx, vz, hit.dist, hit.roadY);
+        const gy = estimateGroundY(vx, vz, hit.dist, hit.roadY, hit.s, hit.lateralOffset);
         if (gy < minTerrainY) minTerrainY = gy;
         if (gy > maxTerrainY) maxTerrainY = gy;
       }
@@ -2631,7 +4124,7 @@ function buildChunkedOsmMeshes(
     const mesh = new THREE.Mesh(chunkGeo, osmMaterial);
     mesh.name = `OsmCorridor_Chunk_${chunkIdx}`;
     mesh.frustumCulled = true;
-    mesh.castShadow = true;
+    mesh.castShadow = false;
     mesh.receiveShadow = true;
     meshes.push(mesh);
   }
@@ -2674,7 +4167,15 @@ export function buildSalatigaCustomBuildings(
     const b = buildings[i];
     const worldPos = gpsToWorld(b.lon, b.lat);
     const hit = trackQuery.queryNearest(worldPos.x, worldPos.z);
-    const groundY = estimateGroundY(worldPos.x, worldPos.z, hit.dist, hit.roadY);
+    const isRoadsideCommercial =
+      b.style === 'tamansari-arcade' ||
+      b.style === 'pasar-raya-ruko' ||
+      b.style === 'pasar-raya-ruko-south' ||
+      b.style === 'market-complex' ||
+      b.style === 'shophouse-row';
+    const groundY = isRoadsideCommercial
+      ? hit.roadY + 0.24
+      : estimateGroundY(worldPos.x, worldPos.z, hit.dist, hit.roadY, hit.s, hit.lateralOffset);
     const chunkIdx = Math.floor(hit.s / CHUNK_LENGTH_METERS);
 
     customPositions.push({

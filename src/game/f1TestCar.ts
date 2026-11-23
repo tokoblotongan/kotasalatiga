@@ -9,6 +9,100 @@ export interface F1TestCarRig {
   dispose: () => void;
 }
 
+interface CarPartSpec {
+  geo: THREE.BufferGeometry;
+  hex: string;
+  px?: number;
+  py?: number;
+  pz?: number;
+  rx?: number;
+  ry?: number;
+  rz?: number;
+  sx?: number;
+  sy?: number;
+  sz?: number;
+}
+
+const _pPos = new THREE.Vector3();
+const _pQuat = new THREE.Quaternion();
+const _pEuler = new THREE.Euler();
+const _pScale = new THREE.Vector3(1, 1, 1);
+const _pMat = new THREE.Matrix4();
+const _pColor = new THREE.Color();
+
+function mergeColoredParts(specs: CarPartSpec[]): THREE.BufferGeometry {
+  const prepared: THREE.BufferGeometry[] = [];
+  let totalVerts = 0;
+  let totalIdx = 0;
+
+  for (let i = 0; i < specs.length; i++) {
+    const sp = specs[i];
+    const g = sp.geo;
+    _pEuler.set(sp.rx ?? 0, sp.ry ?? 0, sp.rz ?? 0, 'XYZ');
+    _pQuat.setFromEuler(_pEuler);
+    _pPos.set(sp.px ?? 0, sp.py ?? 0, sp.pz ?? 0);
+    _pScale.set(sp.sx ?? 1, sp.sy ?? 1, sp.sz ?? 1);
+    _pMat.compose(_pPos, _pQuat, _pScale);
+    g.applyMatrix4(_pMat);
+
+    if (!g.index) {
+      const cnt = g.attributes.position.count;
+      const seq = new Array<number>(cnt);
+      for (let k = 0; k < cnt; k++) seq[k] = k;
+      g.setIndex(seq);
+    }
+
+    const vCount = g.attributes.position.count;
+    const cols = new Float32Array(vCount * 3);
+    _pColor.set(sp.hex);
+    for (let v = 0; v < vCount; v++) {
+      cols[v * 3] = _pColor.r;
+      cols[v * 3 + 1] = _pColor.g;
+      cols[v * 3 + 2] = _pColor.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+
+    totalVerts += vCount;
+    totalIdx += g.index!.count;
+    prepared.push(g);
+  }
+
+  const pos = new Float32Array(totalVerts * 3);
+  const norm = new Float32Array(totalVerts * 3);
+  const col = new Float32Array(totalVerts * 3);
+  const idx = totalVerts > 65535 ? new Uint32Array(totalIdx) : new Uint16Array(totalIdx);
+
+  let vo = 0;
+  let io = 0;
+  for (let i = 0; i < prepared.length; i++) {
+    const p = prepared[i];
+    const pPos = p.attributes.position.array as Float32Array;
+    const pNorm = p.attributes.normal.array as Float32Array;
+    const pCol = p.attributes.color.array as Float32Array;
+    const pIdx = p.index!.array as ArrayLike<number>;
+
+    pos.set(pPos, vo * 3);
+    norm.set(pNorm, vo * 3);
+    col.set(pCol, vo * 3);
+    for (let k = 0; k < pIdx.length; k++) {
+      idx[io + k] = pIdx[k] + vo;
+    }
+
+    vo += p.attributes.position.count;
+    io += pIdx.length;
+    p.dispose();
+  }
+
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
+  out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  out.computeBoundingBox();
+  out.computeBoundingSphere();
+  return out;
+}
+
 function createContactShadowTexture(): THREE.CanvasTexture {
   const size = 128;
   const canvas = document.createElement('canvas');
@@ -37,53 +131,29 @@ function createContactShadowTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Builds a single lightweight low-poly F1 test car (< 800 tris)
+ * Builds a single lightweight low-poly F1 test car (< 800 tris, 7 batched meshes)
  * Grounded at y = 0 (bottom of tires), forward = +Z.
  */
 export function buildF1TestCar(): F1TestCarRig {
   const group = new THREE.Group();
   group.name = 'F1TestCar';
 
-  // Materials with varied roughness/metalness for crisp PBR definition
-  const liveryRedMat = new THREE.MeshPhysicalMaterial({
-    color: 0xd91c24,
-    roughness: 0.24,
-    metalness: 0.32,
-    clearcoat: 0.9,
-    clearcoatRoughness: 0.12,
+  const bodyMat = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    roughness: 0.28,
+    metalness: 0.26,
+    clearcoat: 0.85,
+    clearcoatRoughness: 0.14,
   });
-  const liveryWhiteMat = new THREE.MeshPhysicalMaterial({
-    color: 0xf1f5f9,
-    roughness: 0.26,
-    metalness: 0.15,
-    clearcoat: 0.8,
+
+  const wheelMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    roughness: 0.72,
+    metalness: 0.28,
   });
-  const carbonMat = new THREE.MeshStandardMaterial({
-    color: 0x1b1e24,
-    roughness: 0.62,
-    metalness: 0.22,
-  });
-  const tireMat = new THREE.MeshStandardMaterial({
-    color: 0x16181c,
-    roughness: 0.88,
-    metalness: 0.05,
-  });
-  const rimMat = new THREE.MeshStandardMaterial({
-    color: 0xcbd5e1,
-    roughness: 0.25,
-    metalness: 0.88,
-  });
-  const helmetMat = new THREE.MeshPhysicalMaterial({
-    color: 0xf59e0b,
-    roughness: 0.18,
-    metalness: 0.35,
-    clearcoat: 1.0,
-  });
-  const visorMat = new THREE.MeshStandardMaterial({
-    color: 0x0f172a,
-    roughness: 0.12,
-    metalness: 0.9,
-  });
+
   const brakeLightMaterial = new THREE.MeshStandardMaterial({
     color: 0xef4444,
     emissive: 0x991b1b,
@@ -105,188 +175,108 @@ export function buildF1TestCar(): F1TestCarRig {
   contactShadow.position.set(0, 0.015, 0);
   group.add(contactShadow);
 
-  // 2. Carbon-fiber Venturi floor & diffuser plank
-  const floorGeo = new THREE.BoxGeometry(1.52, 0.06, 4.15);
-  const floor = new THREE.Mesh(floorGeo, carbonMat);
-  floor.position.set(0, 0.11, -0.08);
-  floor.castShadow = true;
-  floor.receiveShadow = true;
-  group.add(floor);
+  // 2. Merged static F1 chassis, wings, floor, halo, suspension wishbones & driver helmet (1 draw call)
+  const RED = '#d91c24';
+  const WHITE = '#f1f5f9';
+  const CARBON = '#1b1e24';
+  const HELMET = '#f59e0b';
+  const VISOR = '#0f172a';
 
-  // 3. Primary monocoque chassis tub & tapered nose cone
-  const chassisGeo = new THREE.BoxGeometry(0.68, 0.36, 2.35);
-  const chassis = new THREE.Mesh(chassisGeo, liveryRedMat);
-  chassis.position.set(0, 0.32, 0.05);
-  chassis.castShadow = true;
-  chassis.receiveShadow = true;
-  group.add(chassis);
+  const bodyParts: CarPartSpec[] = [
+    // Carbon-fiber Venturi floor & diffuser plank
+    { geo: new THREE.BoxGeometry(1.52, 0.06, 4.15), hex: CARBON, py: 0.11, pz: -0.08 },
+    // Primary monocoque chassis tub & tapered nose cone
+    { geo: new THREE.BoxGeometry(0.68, 0.36, 2.35), hex: RED, py: 0.32, pz: 0.05 },
+    { geo: new THREE.BoxGeometry(0.42, 0.2, 1.35), hex: RED, py: 0.24, pz: 1.62, rx: 0.08 },
+    { geo: new THREE.BoxGeometry(0.28, 0.13, 0.55), hex: WHITE, py: 0.18, pz: 2.28 },
+    // Sculpted sidepods & engine cover / shark fin
+    { geo: new THREE.BoxGeometry(0.42, 0.32, 1.65), hex: RED, px: -0.54, py: 0.29, pz: -0.22 },
+    { geo: new THREE.BoxGeometry(0.42, 0.32, 1.65), hex: RED, px: 0.54, py: 0.29, pz: -0.22 },
+    { geo: new THREE.BoxGeometry(0.38, 0.42, 1.15), hex: WHITE, py: 0.54, pz: -0.62 },
+    { geo: new THREE.BoxGeometry(0.04, 0.36, 1.1), hex: RED, py: 0.68, pz: -1.18 },
+    // Front Wing Assembly + Endplates
+    { geo: new THREE.BoxGeometry(1.96, 0.05, 0.48), hex: CARBON, py: 0.13, pz: 2.25 },
+    { geo: new THREE.BoxGeometry(1.88, 0.04, 0.22), hex: WHITE, py: 0.18, pz: 2.08, rx: -0.18 },
+    { geo: new THREE.BoxGeometry(0.04, 0.22, 0.54), hex: RED, px: -0.98, py: 0.2, pz: 2.24 },
+    { geo: new THREE.BoxGeometry(0.04, 0.22, 0.54), hex: RED, px: 0.98, py: 0.2, pz: 2.24 },
+    // Rear Wing Assembly + DRS Flap
+    { geo: new THREE.BoxGeometry(0.05, 0.52, 0.18), hex: CARBON, py: 0.54, pz: -1.86 },
+    { geo: new THREE.BoxGeometry(1.24, 0.06, 0.34), hex: CARBON, py: 0.82, pz: -1.94, rx: -0.15 },
+    { geo: new THREE.BoxGeometry(1.22, 0.05, 0.22), hex: WHITE, py: 0.92, pz: -2.02, rx: -0.32 },
+    { geo: new THREE.BoxGeometry(0.04, 0.56, 0.44), hex: RED, px: -0.62, py: 0.72, pz: -1.95 },
+    { geo: new THREE.BoxGeometry(0.04, 0.56, 0.44), hex: RED, px: 0.62, py: 0.72, pz: -1.95 },
+    // Halo Cockpit & Driver Helmet
+    {
+      geo: (() => {
+        const g = new THREE.TorusGeometry(0.24, 0.028, 6, 14, Math.PI);
+        g.rotateX(Math.PI / 2);
+        return g;
+      })(),
+      hex: CARBON,
+      py: 0.58,
+      pz: 0.34,
+    },
+    { geo: new THREE.BoxGeometry(0.045, 0.18, 0.06), hex: CARBON, py: 0.51, pz: 0.57, rx: -0.35 },
+    { geo: new THREE.SphereGeometry(0.145, 12, 10), hex: HELMET, py: 0.53, pz: 0.18 },
+    { geo: new THREE.BoxGeometry(0.2, 0.065, 0.12), hex: VISOR, py: 0.54, pz: 0.27 },
+    // Suspension wishbones
+    { geo: new THREE.BoxGeometry(0.62, 0.03, 0.06), hex: CARBON, px: -0.52, py: 0.28, pz: 1.42 },
+    { geo: new THREE.BoxGeometry(0.62, 0.03, 0.06), hex: CARBON, px: 0.52, py: 0.28, pz: 1.42 },
+    { geo: new THREE.BoxGeometry(0.62, 0.03, 0.06), hex: CARBON, px: -0.52, py: 0.28, pz: -1.38 },
+    { geo: new THREE.BoxGeometry(0.62, 0.03, 0.06), hex: CARBON, px: 0.52, py: 0.28, pz: -1.38 },
+  ];
 
-  const noseGeo = new THREE.BoxGeometry(0.42, 0.2, 1.35);
-  const nose = new THREE.Mesh(noseGeo, liveryRedMat);
-  nose.position.set(0, 0.24, 1.62);
-  nose.rotation.x = 0.08;
-  nose.castShadow = true;
-  group.add(nose);
+  const bodyMesh = new THREE.Mesh(mergeColoredParts(bodyParts), bodyMat);
+  bodyMesh.name = 'F1CarBody';
+  bodyMesh.castShadow = true;
+  bodyMesh.receiveShadow = true;
+  group.add(bodyMesh);
 
-  const noseTipGeo = new THREE.BoxGeometry(0.28, 0.13, 0.55);
-  const noseTip = new THREE.Mesh(noseTipGeo, liveryWhiteMat);
-  noseTip.position.set(0, 0.18, 2.28);
-  noseTip.castShadow = true;
-  group.add(noseTip);
-
-  // 4. Sculpted sidepods & engine cover / shark fin
-  const sidepodGeo = new THREE.BoxGeometry(0.42, 0.32, 1.65);
-  for (const side of [-1, 1]) {
-    const pod = new THREE.Mesh(sidepodGeo, liveryRedMat);
-    pod.position.set(side * 0.54, 0.29, -0.22);
-    pod.castShadow = true;
-    pod.receiveShadow = true;
-    group.add(pod);
-  }
-
-  const airboxGeo = new THREE.BoxGeometry(0.38, 0.42, 1.15);
-  const airbox = new THREE.Mesh(airboxGeo, liveryWhiteMat);
-  airbox.position.set(0, 0.54, -0.62);
-  airbox.castShadow = true;
-  group.add(airbox);
-
-  const finGeo = new THREE.BoxGeometry(0.04, 0.36, 1.1);
-  const fin = new THREE.Mesh(finGeo, liveryRedMat);
-  fin.position.set(0, 0.68, -1.18);
-  fin.castShadow = true;
-  group.add(fin);
-
-  // 5. Front Wing Assembly + Endplates
-  const frontWingGeo = new THREE.BoxGeometry(1.96, 0.05, 0.48);
-  const frontWing = new THREE.Mesh(frontWingGeo, carbonMat);
-  frontWing.position.set(0, 0.13, 2.25);
-  frontWing.castShadow = true;
-  group.add(frontWing);
-
-  const frontFlapGeo = new THREE.BoxGeometry(1.88, 0.04, 0.22);
-  const frontFlap = new THREE.Mesh(frontFlapGeo, liveryWhiteMat);
-  frontFlap.position.set(0, 0.18, 2.08);
-  frontFlap.rotation.x = -0.18;
-  group.add(frontFlap);
-
-  const fEndplateGeo = new THREE.BoxGeometry(0.04, 0.22, 0.54);
-  for (const side of [-1, 1]) {
-    const ep = new THREE.Mesh(fEndplateGeo, liveryRedMat);
-    ep.position.set(side * 0.98, 0.2, 2.24);
-    ep.castShadow = true;
-    group.add(ep);
-  }
-
-  // 6. Rear Wing Assembly + DRS Flap + FIA Rain Light
-  const rPylonGeo = new THREE.BoxGeometry(0.05, 0.52, 0.18);
-  const rPylon = new THREE.Mesh(rPylonGeo, carbonMat);
-  rPylon.position.set(0, 0.54, -1.86);
-  group.add(rPylon);
-
-  const rearMainGeo = new THREE.BoxGeometry(1.24, 0.06, 0.34);
-  const rearMain = new THREE.Mesh(rearMainGeo, carbonMat);
-  rearMain.position.set(0, 0.82, -1.94);
-  rearMain.rotation.x = -0.15;
-  rearMain.castShadow = true;
-  group.add(rearMain);
-
-  const rearDrsGeo = new THREE.BoxGeometry(1.22, 0.05, 0.22);
-  const rearDrs = new THREE.Mesh(rearDrsGeo, liveryWhiteMat);
-  rearDrs.position.set(0, 0.92, -2.02);
-  rearDrs.rotation.x = -0.32;
-  rearDrs.castShadow = true;
-  group.add(rearDrs);
-
-  const rEndplateGeo = new THREE.BoxGeometry(0.04, 0.56, 0.44);
-  for (const side of [-1, 1]) {
-    const ep = new THREE.Mesh(rEndplateGeo, liveryRedMat);
-    ep.position.set(side * 0.62, 0.72, -1.95);
-    ep.castShadow = true;
-    group.add(ep);
-  }
-
+  // 3. FIA Rain Light (separate mesh so brakeLightMaterial.emissiveIntensity animates dynamically)
   const rainLightGeo = new THREE.BoxGeometry(0.1, 0.14, 0.06);
   const rainLight = new THREE.Mesh(rainLightGeo, brakeLightMaterial);
   rainLight.position.set(0, 0.26, -2.14);
   group.add(rainLight);
 
-  // 7. Halo Cockpit & Driver Helmet
-  const haloBarGeo = new THREE.TorusGeometry(0.24, 0.028, 6, 14, Math.PI);
-  haloBarGeo.rotateX(Math.PI / 2);
-  const halo = new THREE.Mesh(haloBarGeo, carbonMat);
-  halo.position.set(0, 0.58, 0.34);
-  group.add(halo);
-
-  const haloStemGeo = new THREE.BoxGeometry(0.045, 0.18, 0.06);
-  const haloStem = new THREE.Mesh(haloStemGeo, carbonMat);
-  haloStem.position.set(0, 0.51, 0.57);
-  haloStem.rotation.x = -0.35;
-  group.add(haloStem);
-
-  const helmetGeo = new THREE.SphereGeometry(0.145, 12, 10);
-  const helmet = new THREE.Mesh(helmetGeo, helmetMat);
-  helmet.position.set(0, 0.53, 0.18);
-  helmet.castShadow = true;
-  group.add(helmet);
-
-  const visorGeo = new THREE.BoxGeometry(0.2, 0.065, 0.12);
-  const visor = new THREE.Mesh(visorGeo, visorMat);
-  visor.position.set(0, 0.54, 0.27);
-  group.add(visor);
-
-  // 8. 4x Open-Wheel Tires & Metallic Rims (radius = 0.33m, bottom flush at y = 0)
+  // 4. 4x Open-Wheel Tires & Metallic Rims merged per wheel (radius = 0.33m, bottom flush at y = 0)
   const wheelRadius = 0.33;
   const wheelWidthFront = 0.31;
   const wheelWidthRear = 0.38;
 
-  const frontTireGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidthFront, 16);
-  frontTireGeo.rotateZ(Math.PI / 2);
-  const rearTireGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidthRear, 16);
-  rearTireGeo.rotateZ(Math.PI / 2);
+  const createWheelGeometry = (tireWidth: number, rimWidthScale: number): THREE.BufferGeometry => {
+    const tire = new THREE.CylinderGeometry(wheelRadius, wheelRadius, tireWidth, 16);
+    tire.rotateZ(Math.PI / 2);
+    const rim = new THREE.CylinderGeometry(0.18, 0.18, 0.39 * rimWidthScale, 10);
+    rim.rotateZ(Math.PI / 2);
+    return mergeColoredParts([
+      { geo: tire, hex: '#16181c' },
+      { geo: rim, hex: '#cbd5e1' },
+    ]);
+  };
 
-  const rimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.39, 10);
-  rimGeo.rotateZ(Math.PI / 2);
+  const frontWheelGeo = createWheelGeometry(wheelWidthFront, 0.84);
+  const rearWheelGeo = createWheelGeometry(wheelWidthRear, 1.0);
 
   const wheelMeshes: THREE.Mesh[] = [];
   const frontWheelPivots: [THREE.Group, THREE.Group] = [new THREE.Group(), new THREE.Group()];
 
-  // Front wheels (pivots at ±0.84, y=0.33, z=1.42)
   const frontSpecs: [number, THREE.Group][] = [
     [-0.84, frontWheelPivots[0]],
     [0.84, frontWheelPivots[1]],
   ];
   for (const [wx, pivot] of frontSpecs) {
     pivot.position.set(wx, wheelRadius, 1.42);
-    const tire = new THREE.Mesh(frontTireGeo, tireMat);
-    tire.castShadow = true;
-    const rim = new THREE.Mesh(rimGeo, rimMat);
-    rim.scale.y = 0.84;
-    tire.add(rim);
-    pivot.add(tire);
-    wheelMeshes.push(tire);
+    const wheel = new THREE.Mesh(frontWheelGeo, wheelMat);
+    pivot.add(wheel);
+    wheelMeshes.push(wheel);
     group.add(pivot);
   }
 
-  // Rear wheels (±0.85, y=0.33, z=-1.38)
   for (const wx of [-0.85, 0.85]) {
-    const tire = new THREE.Mesh(rearTireGeo, tireMat);
-    tire.position.set(wx, wheelRadius, -1.38);
-    tire.castShadow = true;
-    const rim = new THREE.Mesh(rimGeo, rimMat);
-    tire.add(rim);
-    wheelMeshes.push(tire);
-    group.add(tire);
-  }
-
-  // Suspension wishbones (visual connection from chassis to wheels)
-  const wishboneGeo = new THREE.BoxGeometry(0.62, 0.03, 0.06);
-  for (const side of [-1, 1]) {
-    const fWish = new THREE.Mesh(wishboneGeo, carbonMat);
-    fWish.position.set(side * 0.52, 0.28, 1.42);
-    group.add(fWish);
-    const rWish = new THREE.Mesh(wishboneGeo, carbonMat);
-    rWish.position.set(side * 0.52, 0.28, -1.38);
-    group.add(rWish);
+    const wheel = new THREE.Mesh(rearWheelGeo, wheelMat);
+    wheel.position.set(wx, wheelRadius, -1.38);
+    wheelMeshes.push(wheel);
+    group.add(wheel);
   }
 
   const setWheelState = (steerAngleRad: number, wheelSpinDeltaRad: number, braking: boolean) => {
